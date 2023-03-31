@@ -239,8 +239,9 @@ export interface ILightNovelChapter {
 }
 
 export interface ILightNovelChapterContent {
+  novelTitle: string;
+  chapterTitle: string;
   text: string;
-  html?: string;
 }
 
 export interface ILightNovelInfo extends ILightNovelResult {
@@ -319,6 +320,7 @@ export interface ISource {
   subtitles?: ISubtitle[];
   sources: IVideo[];
   download?: string;
+  embedURL?: string;
 }
 
 /**
@@ -444,7 +446,7 @@ export interface ProxyConfig {
    * The proxy URL
    * @example https://proxy.com
    **/
-  url: string;
+  url: string | string[];
   /**
    * X-API-Key header value (if any)
    **/

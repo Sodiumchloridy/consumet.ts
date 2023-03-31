@@ -12,7 +12,7 @@ class Gogoanime extends models_1.AnimeParser {
     constructor(proxyConfig) {
         super('https://www.gogoanime.dk', proxyConfig);
         this.name = 'Gogoanime';
-        this.baseUrl = 'https://www.gogoanime.dk';
+        this.baseUrl = 'https://gogoanime.gr';
         this.logo = 'https://play-lh.googleusercontent.com/MaGEiAEhNHAJXcXKzqTNgxqRmhuKB1rCUgb15UrN_mWUNRnLpO5T1qja64oRasO7mn0';
         this.classPath = 'ANIME.Gogoanime';
         this.ajaxUrl = 'https://ajax.gogo-load.com/ajax';
@@ -139,6 +139,7 @@ class Gogoanime extends models_1.AnimeParser {
          * @param server server type (default 'GogoCDN') (optional)
          */
         this.fetchEpisodeSources = async (episodeId, server = models_1.StreamingServers.VidStreaming) => {
+            var _a;
             if (episodeId.startsWith('http')) {
                 const serverUrl = new URL(episodeId);
                 switch (server) {
@@ -171,7 +172,8 @@ class Gogoanime extends models_1.AnimeParser {
                         serverUrl = new URL(`https:${$('#load_anime > div > div > iframe').attr('src')}`);
                         break;
                     case models_1.StreamingServers.VidStreaming:
-                        serverUrl = new URL(`https:${$('div.anime_video_body > div.anime_muti_link > ul > li.vidcdn > a').attr('data-video')}`);
+                        serverUrl = new URL(`https:${(_a = $('div.anime_video_body > div.anime_muti_link > ul > li.vidcdn > a')
+                            .attr('data-video')) === null || _a === void 0 ? void 0 : _a.replace('.pro', '.net')}`);
                         break;
                     case models_1.StreamingServers.StreamSB:
                         serverUrl = new URL($('div.anime_video_body > div.anime_muti_link > ul > li.streamsb > a').attr('data-video'));
@@ -183,7 +185,6 @@ class Gogoanime extends models_1.AnimeParser {
                 return await this.fetchEpisodeSources(serverUrl.href, server);
             }
             catch (err) {
-                console.error(err);
                 throw new Error('Episode not found.');
             }
         };
@@ -208,6 +209,22 @@ class Gogoanime extends models_1.AnimeParser {
                     });
                 });
                 return servers;
+            }
+            catch (err) {
+                throw new Error('Episode not found.');
+            }
+        };
+        /**
+         *
+         * @param episodeId episode link or episode id
+         */
+        this.fetchAnimeIdFromEpisodeId = async (episodeId) => {
+            try {
+                if (!episodeId.startsWith(this.baseUrl))
+                    episodeId = `/${episodeId}`;
+                const res = await this.client.get(episodeId);
+                const $ = (0, cheerio_1.load)(res.data);
+                return $('#wrapper_bg > section > section.content_left > div:nth-child(1) > div.anime_video_body > div.anime_video_body_cate > div.anime-info > a').attr('href').split('/')[2];
             }
             catch (err) {
                 throw new Error('Episode not found.');
@@ -299,12 +316,5 @@ class Gogoanime extends models_1.AnimeParser {
         };
     }
 }
-// (async () => {
-// //   const anime = new Gogoanime();
-// //   const search = await anime.search('juuni taisen');
-// //   console.log(search);
-// //   const animeInfo = await anime.fetchEpisodeSources('juuni-taisen-dub-episode-6', StreamingServers.GogoCDN);
-// //   console.log(animeInfo);
-// // })();
 exports.default = Gogoanime;
 //# sourceMappingURL=gogoanime.js.map

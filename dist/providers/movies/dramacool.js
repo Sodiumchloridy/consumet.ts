@@ -39,7 +39,6 @@ class Dramacool extends models_1.MovieParser {
                 return searchResult;
             }
             catch (err) {
-                console.log(err);
                 throw new Error(err.message);
             }
         };
@@ -78,7 +77,6 @@ class Dramacool extends models_1.MovieParser {
                 return mediaInfo;
             }
             catch (err) {
-                console.log(err);
                 throw new Error(err.message);
             }
         };
@@ -136,7 +134,6 @@ class Dramacool extends models_1.MovieParser {
                 return await this.fetchEpisodeSources(serverUrl, server);
             }
             catch (err) {
-                console.log(err);
                 throw new Error(err.message);
             }
         };

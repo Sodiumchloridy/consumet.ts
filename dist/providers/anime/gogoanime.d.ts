@@ -29,6 +29,11 @@ declare class Gogoanime extends AnimeParser {
      */
     fetchEpisodeServers: (episodeId: string) => Promise<IEpisodeServer[]>;
     /**
+     *
+     * @param episodeId episode link or episode id
+     */
+    fetchAnimeIdFromEpisodeId: (episodeId: string) => Promise<string>;
+    /**
      * @param page page number (optional)
      * @param type type of media. (optional) (default `1`) `1`: Japanese with subtitles, `2`: english/dub with no subtitles, `3`: chinese with english subtitles
      */

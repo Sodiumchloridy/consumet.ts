@@ -41,8 +41,9 @@ import Gogoanime from '../../providers/anime/gogoanime';
 import Enime from '../anime/enime';
 import Zoro from '../anime/zoro';
 import Mangasee123 from '../manga/mangasee123';
-import Crunchyroll from '../anime/kamyroll';
+import Crunchyroll from '../anime/crunchyroll';
 import Bilibili from '../anime/bilibili';
+import NineAnime from '../anime/9anime';
 import { compareTwoStrings } from '../../utils/utils';
 
 class Anilist extends AnimeParser {
@@ -127,6 +128,9 @@ class Anilist extends AnimeParser {
             genres: item.genres,
             color: item.coverImage?.color,
             totalEpisodes: item.episodes ?? item.nextAiringEpisode?.episode - 1,
+            currentEpisodeCount: item?.nextAiringEpisode
+              ? item?.nextAiringEpisode?.episode - 1
+              : item.episodes,
             type: item.format,
             releaseDate: item.seasonYear,
           })) ??
@@ -154,6 +158,9 @@ class Anilist extends AnimeParser {
             genres: item.genre,
             color: item.color,
             totalEpisodes: item.currentEpisode,
+            currentEpisodeCount: item?.nextAiringEpisode
+              ? item?.nextAiringEpisode?.episode - 1
+              : item.currentEpisode,
             type: item.format,
             releaseDate: item.year,
           })),
@@ -261,6 +268,8 @@ class Anilist extends AnimeParser {
             cover: item.bannerImage,
             popularity: item.popularity,
             totalEpisodes: item.episodes ?? item.nextAiringEpisode?.episode - 1,
+            currentEpisode: item.nextAiringEpisode?.episode - 1 ?? item.episodes,
+            countryOfOrigin: item.countryOfOrigin,
             description: item.description,
             genres: item.genres,
             rating: item.averageScore,
@@ -341,7 +350,7 @@ class Anilist extends AnimeParser {
         throw Error('Media not found. If the problem persists, please contact the developer');
       if (status >= 500) data = await new Enime().fetchAnimeInfoByIdRaw(id);
 
-      animeInfo.malId = data.data?.Media?.idMal ?? data?.mappings!['mal'];
+      animeInfo.malId = data.data?.Media?.idMal ?? data?.mappings?.mal;
       animeInfo.title = data.data.Media
         ? {
             romaji: data.data.Media.title.romaji,
@@ -410,6 +419,9 @@ class Anilist extends AnimeParser {
           episode: data.data.Media.nextAiringEpisode?.episode,
         };
       animeInfo.totalEpisodes = data.data.Media?.episodes ?? data.data.Media.nextAiringEpisode?.episode - 1;
+      animeInfo.currentEpisode = data.data.Media?.nextAiringEpisode?.episode
+        ? data.data.Media.nextAiringEpisode?.episode - 1
+        : data.data.Media?.episodes;
       animeInfo.rating = data.data.Media.averageScore;
       animeInfo.duration = data.data.Media.duration;
       animeInfo.genres = data.data.Media.genres;
@@ -699,8 +711,12 @@ class Anilist extends AnimeParser {
           [k: string]: { [k: string]: { url: string; page: string; title: string } };
         };
         let sites = Object.values(sitesT).map((v, i) => {
-          const obj = [...Object.values(Object.values(sitesT)[i])];
-          const pages = obj.map(v => ({ page: v.page, url: v.url, title: v.title }));
+          const obj: any = [...Object.values(Object.values(sitesT)[i])];
+          const pages = obj.map((v: { page: string; url: string; title: string }) => ({
+            page: v.page,
+            url: v.url,
+            title: v.title,
+          }));
           return pages;
         }) as any[];
 
@@ -741,7 +757,12 @@ class Anilist extends AnimeParser {
 
     const expectedType = dub ? SubOrSub.DUB : SubOrSub.SUB;
 
-    if (possibleAnime.subOrDub != SubOrSub.BOTH && possibleAnime.subOrDub != expectedType) {
+    // Have this as a fallback in the meantime for compatibility
+    if (possibleAnime.subOrDub) {
+      if (possibleAnime.subOrDub != SubOrSub.BOTH && possibleAnime.subOrDub != expectedType) {
+        return undefined;
+      }
+    } else if ((!possibleAnime.hasDub && dub) || (!possibleAnime.hasSub && !dub)) {
       return undefined;
     }
 
@@ -758,9 +779,35 @@ class Anilist extends AnimeParser {
     }
 
     if (this.provider instanceof Crunchyroll) {
-      return dub
-        ? possibleAnime.episodes.filter((ep: any) => ep.isDubbed)
-        : possibleAnime.episodes.filter((ep: any) => ep.type == 'Subbed');
+      const nestedEpisodes = Object.keys(possibleAnime.episodes)
+        .filter((key: any) => key.toLowerCase().includes(dub ? 'dub' : 'sub'))
+        .sort((first: any, second: any) => {
+          return (
+            (possibleAnime.episodes[first]?.[0].season_number ?? 0) -
+            (possibleAnime.episodes[second]?.[0].season_number ?? 0)
+          );
+        })
+        .map((key: any) => {
+          const audio = key
+            .replace(/[0-9]/g, '')
+            .replace(/(^\w{1})|(\s+\w{1})/g, (letter: string) => letter.toUpperCase());
+          possibleAnime.episodes[key].forEach((element: any) => (element.type = audio));
+          return possibleAnime.episodes[key];
+        });
+      return nestedEpisodes.flat();
+    }
+
+    if (this.provider instanceof NineAnime) {
+      possibleAnime.episodes.forEach((_: any, index: number) => {
+        if (expectedType == SubOrSub.DUB) {
+          possibleAnime.episodes[index].id = possibleAnime.episodes[index].dubId;
+        }
+
+        if (possibleAnime.episodes[index].dubId) {
+          delete possibleAnime.episodes[index].dubId;
+        }
+      });
+      possibleAnime.episodes = possibleAnime.episodes.filter((el: any) => el.id != undefined);
     }
 
     const possibleProviderEpisodes = possibleAnime.episodes as IAnimeEpisode[];
@@ -901,7 +948,7 @@ class Anilist extends AnimeParser {
             item.bannerImage ?? item.coverImage.extraLarge ?? item.coverImage.large ?? item.coverImage.medium,
           rating: item.averageScore,
           releaseDate: item.seasonYear,
-          color: item.color,
+          color: item.coverImage?.color,
           genres: item.genres,
           totalEpisodes: isNaN(item.episodes) ? 0 : item.episodes ?? item.nextAiringEpisode?.episode - 1 ?? 0,
           duration: item.duration,
@@ -967,7 +1014,7 @@ class Anilist extends AnimeParser {
             item.bannerImage ?? item.coverImage.extraLarge ?? item.coverImage.large ?? item.coverImage.medium,
           rating: item.averageScore,
           releaseDate: item.seasonYear,
-          color: item.color,
+          color: item.coverImage?.color,
           genres: item.genres,
           totalEpisodes: isNaN(item.episodes) ? 0 : item.episodes ?? item.nextAiringEpisode?.episode - 1 ?? 0,
           duration: item.duration,
@@ -1114,6 +1161,7 @@ class Anilist extends AnimeParser {
       throw new Error((err as Error).message);
     }
   };
+
   private findAnimeRaw = async (slug: string, externalLinks?: any) => {
     if (this.provider instanceof Crunchyroll && externalLinks) {
       const link = externalLinks.find((link: any) => link.site.includes('Crunchyroll'));
@@ -1127,7 +1175,8 @@ class Anilist extends AnimeParser {
       }
     }
     const findAnime = (await this.provider.search(slug)) as ISearch<IAnimeResult>;
-    if (findAnime.results.length === 0) return [];
+
+    if (findAnime.results.length === 0) return undefined;
 
     // Sort the retrieved info for more accurate results.
 
@@ -1233,7 +1282,7 @@ class Anilist extends AnimeParser {
         },
         image: item.anime.coverImage ?? item.anime.bannerImage,
         rating: item.anime.averageScore,
-        color: item.anime.color,
+        color: item.anime?.color,
         episodeId: `${
           provider === 'gogoanime'
             ? item.sources.find((source: any) => source.website.toLowerCase() === 'gogoanime')?.id
@@ -1449,7 +1498,11 @@ class Anilist extends AnimeParser {
           timeUntilAiring: data.data.Media.nextAiringEpisode?.timeUntilAiring,
           episode: data.data.Media.nextAiringEpisode?.episode,
         };
+
       animeInfo.totalEpisodes = data.data.Media?.episodes ?? data.data.Media.nextAiringEpisode?.episode - 1;
+      animeInfo.currentEpisode = data.data.Media?.nextAiringEpisode?.episode
+        ? data.data.Media.nextAiringEpisode?.episode - 1
+        : data.data.Media?.episodes || undefined;
       animeInfo.rating = data.data.Media.averageScore;
       animeInfo.duration = data.data.Media.duration;
       animeInfo.genres = data.data.Media.genres;
@@ -1550,6 +1603,7 @@ class Anilist extends AnimeParser {
             ? MediaStatus.HIATUS
             : MediaStatus.UNKNOWN,
         episodes: item.node.episodes,
+
         image: item.node.coverImage.extraLarge ?? item.node.coverImage.large ?? item.node.coverImage.medium,
         cover:
           item.node.bannerImage ??
@@ -2001,8 +2055,8 @@ class Anilist extends AnimeParser {
           [k: string]: { [k: string]: { url: string; page: string; title: string } };
         };
         let sites = Object.values(sitesT).map((v, i) => {
-          const obj = [...Object.values(Object.values(sitesT)[i])];
-          const pages = obj.map(v => ({ page: v.page, url: v.url, title: v.title }));
+          const obj: any = [...Object.values(Object.values(sitesT)[i])];
+          const pages: any = obj.map((v: any) => ({ page: v.page, url: v.url, title: v.title }));
           return pages;
         }) as any[];
 
@@ -2061,11 +2115,11 @@ class Anilist extends AnimeParser {
 }
 
 // (async () => {
-//   const ani = new Anilist(new Zoro());
-
-//   const search = await ani.fetchAnimeInfo('21');
-//   const sources = await ani.fetchEpisodeSources(search.episodes![1000].id);
-//   console.log(sources);
+//   const ani = new Anilist();
+//   const search = await ani.search('naruto');
+//   const anime = await ani.fetchAnimeInfo(search.results[0].id);
+//   const sources = await ani.fetchEpisodeSources(anime.episodes![0].id);
+//   console.log(anime);
 // })();
 
 export default Anilist;

@@ -4,9 +4,9 @@ import AnimePahe from './animepahe';
 import Zoro from './zoro';
 import AnimeFox from './animefox';
 import Enime from './enime';
-import Crunchyroll from './kamyroll';
+import Crunchyroll from './crunchyroll';
 import Bilibili from './bilibili';
-import Tenshi from './tenshi';
+import Marin from './marin';
 declare const _default: {
     Gogoanime: typeof Gogoanime;
     NineAnime: typeof NineAnime;
@@ -16,6 +16,6 @@ declare const _default: {
     Enime: typeof Enime;
     Crunchyroll: typeof Crunchyroll;
     Bilibili: typeof Bilibili;
-    Tenshi: typeof Tenshi;
+    Marin: typeof Marin;
 };
 export default _default;

@@ -9,7 +9,7 @@ const models_1 = require("../../models");
 const utils_1 = require("../../utils");
 const gogoanime_1 = __importDefault(require("../anime/gogoanime"));
 const zoro_1 = __importDefault(require("../anime/zoro"));
-const kamyroll_1 = __importDefault(require("../anime/kamyroll"));
+const crunchyroll_1 = __importDefault(require("../anime/crunchyroll"));
 const enime_1 = __importDefault(require("../anime/enime"));
 const bilibili_1 = __importDefault(require("../anime/bilibili"));
 class Myanimelist extends models_1.AnimeParser {
@@ -162,7 +162,7 @@ class Myanimelist extends models_1.AnimeParser {
             }
         };
         this.findAnimeRaw = async (slug, externalLinks) => {
-            if (externalLinks && this.provider instanceof kamyroll_1.default) {
+            if (externalLinks && this.provider instanceof crunchyroll_1.default) {
                 if (externalLinks.map((link) => link.site.includes('Crunchyroll'))) {
                     const link = externalLinks.find((link) => link.site.includes('Crunchyroll'));
                     const { request } = await axios_1.default.get(link.url, { validateStatus: () => true });
@@ -193,7 +193,7 @@ class Myanimelist extends models_1.AnimeParser {
                 // Sort in descending order
                 return secondRating - firstRating;
             });
-            if (this.provider instanceof kamyroll_1.default) {
+            if (this.provider instanceof crunchyroll_1.default) {
                 return await this.provider.fetchAnimeInfo(findAnime.results[0].id, findAnime.results[0].type);
             }
             // TODO: use much better way than this
@@ -206,7 +206,7 @@ class Myanimelist extends models_1.AnimeParser {
             // console.log({ title });
             const slug = title === null || title === void 0 ? void 0 : title.replace(/[^0-9a-zA-Z]+/g, ' ');
             let possibleAnime;
-            if (malId && !(this.provider instanceof kamyroll_1.default || this.provider instanceof bilibili_1.default)) {
+            if (malId && !(this.provider instanceof crunchyroll_1.default || this.provider instanceof bilibili_1.default)) {
                 const malAsyncReq = await (0, axios_1.default)({
                     method: 'GET',
                     url: `${this.malSyncUrl}/mal/anime/${malId}`,
@@ -265,10 +265,22 @@ class Myanimelist extends models_1.AnimeParser {
                     }
                 });
             }
-            if (this.provider instanceof kamyroll_1.default) {
-                return dub
-                    ? possibleAnime.episodes.filter((ep) => ep.isDubbed)
-                    : possibleAnime.episodes.filter((ep) => ep.type == 'Subbed');
+            if (this.provider instanceof crunchyroll_1.default) {
+                const nestedEpisodes = Object.keys(possibleAnime.episodes)
+                    .filter((key) => key.toLowerCase().includes(dub ? 'dub' : 'sub'))
+                    .sort((first, second) => {
+                    var _a, _b, _c, _d;
+                    return (((_b = (_a = possibleAnime.episodes[first]) === null || _a === void 0 ? void 0 : _a[0].season_number) !== null && _b !== void 0 ? _b : 0) -
+                        ((_d = (_c = possibleAnime.episodes[second]) === null || _c === void 0 ? void 0 : _c[0].season_number) !== null && _d !== void 0 ? _d : 0));
+                })
+                    .map((key) => {
+                    const audio = key
+                        .replace(/[0-9]/g, '')
+                        .replace(/(^\w{1})|(\s+\w{1})/g, (letter) => letter.toUpperCase());
+                    possibleAnime.episodes[key].forEach((element) => (element.type = audio));
+                    return possibleAnime.episodes[key];
+                });
+                return nestedEpisodes.flat();
             }
             const possibleProviderEpisodes = possibleAnime.episodes;
             if (typeof ((_a = possibleProviderEpisodes[0]) === null || _a === void 0 ? void 0 : _a.image) !== 'undefined' &&
@@ -383,6 +395,7 @@ class Myanimelist extends models_1.AnimeParser {
                 .trim()
                 .split(',');
             animeInfo.studios = [];
+            animeInfo.popularity = parseInt($('.numbers.popularity').text().trim().replace('Popularity #', '').trim());
             const producers = [];
             $('a').each(function (i, link) {
                 var _a;
@@ -405,8 +418,69 @@ class Myanimelist extends models_1.AnimeParser {
                     };
                 }
             }
+            const ops = $('.theme-songs.js-theme-songs.opnening').find('tr').get();
+            const ignoreList = ['Apple Music', 'Youtube Music', 'Amazon Music', 'Spotify'];
+            animeInfo.openings = ops.map((element) => {
+                //console.log($(element).text().trim());
+                const name = $(element).children().eq(1).children().first().text().trim();
+                if (!ignoreList.includes(name)) {
+                    if ($(element).find('.theme-song-index').length != 0) {
+                        const index = $(element).find('.theme-song-index').text().trim();
+                        const band = $(element).find('.theme-song-artist').text().trim();
+                        const episodes = $(element).find('.theme-song-episode').text().trim();
+                        //console.log($(element).children().eq(1).text().trim().split(index)[1]);
+                        return {
+                            name: $(element).children().eq(1).text().trim().split(index)[1].split(band)[0].trim(),
+                            band: band.replace('by ', ''),
+                            episodes: episodes,
+                        };
+                    }
+                    else {
+                        const band = $(element).find('.theme-song-artist').text().trim();
+                        const episodes = $(element).find('.theme-song-episode').text().trim();
+                        return {
+                            name: $(element).children().eq(1).text().trim().split(band)[0].trim(),
+                            band: band.replace('by ', ''),
+                            episodes: episodes,
+                        };
+                    }
+                }
+            });
+            animeInfo.openings = animeInfo.openings.filter(function (element) {
+                return element !== undefined;
+            });
+            const eds = $('.theme-songs.js-theme-songs.ending').find('tr').get();
+            animeInfo.endings = eds.map((element) => {
+                //console.log($(element).text().trim());
+                const name = $(element).children().eq(1).children().first().text().trim();
+                if (!ignoreList.includes(name)) {
+                    if ($(element).find('.theme-song-index').length != 0) {
+                        const index = $(element).find('.theme-song-index').text().trim();
+                        const band = $(element).find('.theme-song-artist').text().trim();
+                        const episodes = $(element).find('.theme-song-episode').text().trim();
+                        //console.log($(element).children().eq(1).text().trim().split(index)[1]);
+                        return {
+                            name: $(element).children().eq(1).text().trim().split(index)[1].split(band)[0].trim(),
+                            band: band.replace('by ', ''),
+                            episodes: episodes,
+                        };
+                    }
+                    else {
+                        const band = $(element).find('.theme-song-artist').text().trim();
+                        const episodes = $(element).find('.theme-song-episode').text().trim();
+                        return {
+                            name: $(element).children().eq(1).text().trim().split(band)[0].trim(),
+                            band: band.replace('by ', ''),
+                            episodes: episodes,
+                        };
+                    }
+                }
+            });
+            animeInfo.endings = animeInfo.endings.filter(function (element) {
+                return element !== undefined;
+            });
             const description = $('.spaceit_pad').get();
-            description.forEach(elem => {
+            description.forEach((elem) => {
                 var _a;
                 const text = $(elem).text().toLowerCase().trim();
                 const key = text.split(':')[0];
@@ -528,6 +602,6 @@ exports.default = Myanimelist;
 //   const mal = new Myanimelist();
 //   // const search = await mal.search('one piece');
 //   const info = await mal.fetchAnimeInfo('21', true);
-//   console.log(info);
+//   //console.log(info);
 // })();
 //# sourceMappingURL=mal.js.map

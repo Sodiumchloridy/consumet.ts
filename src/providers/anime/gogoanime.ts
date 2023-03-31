@@ -20,7 +20,7 @@ import { GogoCDN, StreamSB } from '../../extractors';
 
 class Gogoanime extends AnimeParser {
   override readonly name = 'Gogoanime';
-  protected override baseUrl = 'https://www.gogoanime.dk';
+  protected override baseUrl = 'https://gogoanime.gr';
   protected override logo =
     'https://play-lh.googleusercontent.com/MaGEiAEhNHAJXcXKzqTNgxqRmhuKB1rCUgb15UrN_mWUNRnLpO5T1qja64oRasO7mn0';
   protected override classPath = 'ANIME.Gogoanime';
@@ -212,7 +212,9 @@ class Gogoanime extends AnimeParser {
           break;
         case StreamingServers.VidStreaming:
           serverUrl = new URL(
-            `https:${$('div.anime_video_body > div.anime_muti_link > ul > li.vidcdn > a').attr('data-video')}`
+            `https:${$('div.anime_video_body > div.anime_muti_link > ul > li.vidcdn > a')
+              .attr('data-video')
+              ?.replace('.pro', '.net')}`
           );
           break;
         case StreamingServers.StreamSB:
@@ -227,7 +229,6 @@ class Gogoanime extends AnimeParser {
 
       return await this.fetchEpisodeSources(serverUrl.href, server);
     } catch (err) {
-      console.error(err);
       throw new Error('Episode not found.');
     }
   };
@@ -261,7 +262,27 @@ class Gogoanime extends AnimeParser {
       throw new Error('Episode not found.');
     }
   };
+  /**
+   *
+   * @param episodeId episode link or episode id
+   */
+  fetchAnimeIdFromEpisodeId = async (episodeId: string): Promise<string> => {
+    try {
+      if (!episodeId.startsWith(this.baseUrl)) episodeId = `/${episodeId}`;
 
+      const res = await this.client.get(episodeId);
+
+      const $ = load(res.data);
+
+      return (
+        $(
+          '#wrapper_bg > section > section.content_left > div:nth-child(1) > div.anime_video_body > div.anime_video_body_cate > div.anime-info > a'
+        ).attr('href') as string
+      ).split('/')[2];
+    } catch (err) {
+      throw new Error('Episode not found.');
+    }
+  };
   /**
    * @param page page number (optional)
    * @param type type of media. (optional) (default `1`) `1`: Japanese with subtitles, `2`: english/dub with no subtitles, `3`: chinese with english subtitles
@@ -357,13 +378,5 @@ class Gogoanime extends AnimeParser {
     }
   };
 }
-
-// (async () => {
-// //   const anime = new Gogoanime();
-// //   const search = await anime.search('juuni taisen');
-// //   console.log(search);
-// //   const animeInfo = await anime.fetchEpisodeSources('juuni-taisen-dub-episode-6', StreamingServers.GogoCDN);
-// //   console.log(animeInfo);
-// // })();
 
 export default Gogoanime;
