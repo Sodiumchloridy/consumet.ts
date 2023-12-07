@@ -3,7 +3,6 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-const axios_1 = __importDefault(require("axios"));
 const crypto_js_1 = __importDefault(require("crypto-js"));
 const models_1 = require("../models");
 const utils_1 = require("../utils");
@@ -31,13 +30,27 @@ class VidCloud extends models_1.VideoExtractor {
                 };
                 let res = undefined;
                 let sources = undefined;
-                res = await axios_1.default.get(`${isAlternative ? this.host2 : this.host}/ajax/embed-4/getSources?id=${id}`, options);
+                res = await this.client.get(`${isAlternative ? this.host2 : this.host}/ajax/embed-4/getSources?id=${id}`, options);
                 if (!(0, utils_1.isJson)(res.data.sources)) {
-                    let { data: key } = await axios_1.default.get('https://github.com/enimax-anime/key/blob/e4/key.txt');
+                    let { data: key } = await this.client.get('https://raw.githubusercontent.com/theonlymo/keys/e4/key');
                     key = (0, utils_1.substringBefore)((0, utils_1.substringAfter)(key, '"blob-code blob-code-inner js-file-line">'), '</td>');
                     if (!key) {
-                        key = await (await axios_1.default.get('https://raw.githubusercontent.com/enimax-anime/key/e4/key.txt')).data;
+                        key = await (await this.client.get('https://raw.githubusercontent.com/theonlymo/keys/e4/key')).data;
                     }
+                    const sourcesArray = res.data.sources.split('');
+                    let extractedKey = '';
+                    let currentIndex = 0;
+                    for (const index of key) {
+                        const start = index[0] + currentIndex;
+                        const end = start + index[1];
+                        for (let i = start; i < end; i++) {
+                            extractedKey += res.data.sources[i];
+                            sourcesArray[i] = '';
+                        }
+                        currentIndex += index[1];
+                    }
+                    key = extractedKey;
+                    res.data.sources = sourcesArray.join('');
                     const decryptedVal = crypto_js_1.default.AES.decrypt(res.data.sources, key).toString(crypto_js_1.default.enc.Utf8);
                     sources = (0, utils_1.isJson)(decryptedVal) ? JSON.parse(decryptedVal) : res.data.sources;
                 }
@@ -49,7 +62,7 @@ class VidCloud extends models_1.VideoExtractor {
                 result.sources = [];
                 this.sources = [];
                 for (const source of sources) {
-                    const { data } = await axios_1.default.get(source.file, options);
+                    const { data } = await this.client.get(source.file, options);
                     const urls = data.split('\n').filter((line) => line.includes('.m3u8'));
                     const qualities = data.split('\n').filter((line) => line.includes('RESOLUTION='));
                     const TdArray = qualities.map((s, i) => {

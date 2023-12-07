@@ -28,3 +28,23 @@ test('returns a filled object of episode sources', async () => {
   const data = await gogoanime.fetchEpisodeSources('spy-x-family-episode-9');
   expect(data.sources).not.toEqual([]);
 });
+
+test('returns a filled array of available genres', async () => {
+  const data = await gogoanime.fetchGenreList();
+  expect(data).not.toEqual([]);
+});
+
+test('returns a filled array of recent episodes', async () => {
+  const data = await gogoanime.fetchRecentEpisodes();
+  expect(data).not.toEqual([]);
+});
+
+test('returns a filled array of recent movies', async () => {
+  const data = await gogoanime.fetchRecentMovies();
+  expect(data).not.toEqual([]);
+});
+
+test('returns a filled array of popular anime', async () => {
+  const data = await gogoanime.fetchPopular();
+  expect(data).not.toEqual([]);
+});

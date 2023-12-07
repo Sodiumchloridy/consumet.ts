@@ -21,17 +21,17 @@ class ComicK extends models_1.MangaParser {
         this.fetchMangaInfo = async (mangaId) => {
             var _a, _b, _c, _d, _e, _f;
             try {
-                const req = await axios_1.default.get(`${this.apiUrl}/comic/${mangaId}`);
+                const req = await this._axios().get(`/comic/${mangaId}`);
                 const data = req.data.comic;
-                const links = Object.values((_a = data.links) !== null && _a !== void 0 ? _a : []).filter((link) => link !== null);
+                const links = Object.values((_a = data.links) !== null && _a !== void 0 ? _a : []).filter(link => link !== null);
                 const mangaInfo = {
-                    id: String(data.id),
+                    id: data.hid,
                     title: data.title,
-                    altTitles: data.md_titles ? data.md_titles.map((title) => title.title) : [],
+                    altTitles: data.md_titles ? data.md_titles.map(title => title.title) : [],
                     description: data.desc,
-                    genres: (_b = data.md_comic_md_genres) === null || _b === void 0 ? void 0 : _b.map((genre) => genre.md_genres.name),
+                    genres: (_b = data.md_comic_md_genres) === null || _b === void 0 ? void 0 : _b.map(genre => genre.md_genres.name),
                     status: ((_c = data.status) !== null && _c !== void 0 ? _c : 0 === 0) ? models_1.MediaStatus.ONGOING : models_1.MediaStatus.COMPLETED,
-                    image: `https://meo.comick.pictures${data.md_covers ? data.md_covers[0].b2key : ""}`,
+                    image: `https://meo.comick.pictures${data.md_covers ? data.md_covers[0].b2key : ''}`,
                     malId: (_d = data.links) === null || _d === void 0 ? void 0 : _d.mal,
                     links: links,
                     chapters: [],
@@ -61,12 +61,12 @@ class ComicK extends models_1.MangaParser {
          */
         this.fetchChapterPages = async (chapterId) => {
             try {
-                const { data } = await (0, axios_1.default)(`${this.apiUrl}/chapter/${chapterId}`);
+                const { data } = await this._axios().get(`/chapter/${chapterId}`);
                 const pages = [];
                 data.chapter.md_images.map((image, index) => {
                     pages.push({
                         img: `https://meo.comick.pictures/${image.b2key}?width=${image.w}`,
-                        page: index
+                        page: index,
                     });
                 });
                 return pages;
@@ -89,12 +89,12 @@ class ComicK extends models_1.MangaParser {
             if (limit * (page - 1) >= 10000)
                 throw new Error('not enough results');
             try {
-                const res = await axios_1.default.get(`${this.apiUrl}/v1.0/search?q=${encodeURIComponent(query)}&limit=${limit}&page=${page}`);
+                const req = await this._axios().get(`/v1.0/search?q=${encodeURIComponent(query)}&limit=${limit}&page=${page}`);
                 const results = {
                     currentPage: page,
                     results: [],
                 };
-                const data = res.data;
+                const data = await req.data;
                 for (const manga of data) {
                     let cover = manga.md_covers ? manga.md_covers[0] : null;
                     if (cover && cover.b2key != undefined) {
@@ -103,8 +103,8 @@ class ComicK extends models_1.MangaParser {
                     results.results.push({
                         id: manga.slug,
                         title: (_a = manga.title) !== null && _a !== void 0 ? _a : manga.slug,
-                        altTitles: manga.md_titles ? manga.md_titles.map((title) => title.title) : [],
-                        image: cover
+                        altTitles: manga.md_titles ? manga.md_titles.map(title => title.title) : [],
+                        image: cover,
                     });
                 }
                 return results;
@@ -118,19 +118,27 @@ class ComicK extends models_1.MangaParser {
                 page = 1;
             }
             const comicId = await this.getComicId(mangaId);
-            const data = await (0, axios_1.default)(`${this.apiUrl}/comic/${comicId}/chapter?page=${page}`);
-            return data.data.chapters;
+            const req = await this._axios().get(`/comic/${comicId}/chapters?page=${page}`);
+            return req.data.chapters;
         };
     }
+    _axios() {
+        return axios_1.default.create({
+            baseURL: this.apiUrl,
+            headers: {
+                'User-Agent': 'Mozilla/5.0',
+            },
+        });
+    }
     /**
-     * @description Fetches the comic ID from the slug
+     * @description Fetches the comic HID from the slug
      * @param id Comic slug
-     * @returns Promise<number> -1 if not found
+     * @returns Promise<string> empty if not found
      */
     async getComicId(id) {
-        const req = await (0, axios_1.default)(`${this.apiUrl}/comic/${id}`);
-        const data = req.data["comic"];
-        return data ? data.id : -1;
+        const req = await this._axios().get(`/comic/${id}`);
+        const data = req.data['comic'];
+        return data ? data.hid : '';
     }
 }
 // (async () => {

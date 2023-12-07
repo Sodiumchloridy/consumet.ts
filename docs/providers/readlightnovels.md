@@ -1,4 +1,4 @@
-<h1>MangaDex</h1>
+<h1>ReadLightNovels</h1>
 
 ```ts
 const readlightnovels = new LIGHT_NOVELS.ReadLightNovels();

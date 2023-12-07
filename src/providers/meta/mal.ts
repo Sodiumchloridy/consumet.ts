@@ -1,4 +1,3 @@
-import axios from 'axios';
 import { load } from 'cheerio';
 
 import {
@@ -17,19 +16,19 @@ import { substringAfter, substringBefore, compareTwoStrings, kitsuSearchQuery, r
 import Gogoanime from '../anime/gogoanime';
 import Zoro from '../anime/zoro';
 import Crunchyroll from '../anime/crunchyroll';
-import Enime from '../anime/enime';
+import Anify from '../anime/anify';
 import Bilibili from '../anime/bilibili';
 
 class Myanimelist extends AnimeParser {
   override readonly name = 'Myanimelist';
   protected override baseUrl = 'https://myanimelist.net/';
   protected override logo = 'https://en.wikipedia.org/wiki/MyAnimeList#/media/File:MyAnimeList.png';
-  protected override classPath = 'META.MAL';
+  protected override classPath = 'META.Myanimelist';
 
   private readonly anilistGraphqlUrl = 'https://graphql.anilist.co';
   private readonly kitsuGraphqlUrl = 'https://kitsu.io/api/graphql';
   private readonly malSyncUrl = 'https://api.malsync.moe';
-  private readonly enimeUrl = 'https://api.enime.moe';
+  private readonly anifyUrl = 'https://api.anify.tv';
   provider: AnimeParser;
 
   /**
@@ -55,7 +54,7 @@ class Myanimelist extends AnimeParser {
     count: number = 1
   ): Promise<void> {
     try {
-      const { data } = await axios.request({
+      const { data } = await this.client.request({
         method: 'get',
         url: `${url}?p=${count}`,
         headers: {
@@ -101,7 +100,7 @@ class Myanimelist extends AnimeParser {
       results: [],
     };
 
-    const { data } = await axios.request({
+    const { data } = await this.client.request({
       method: 'get',
       url: `https://myanimelist.net/anime.php?q=${query}&cat=anime&show=${50 * (page - 1)}`,
       headers: {
@@ -192,10 +191,11 @@ class Myanimelist extends AnimeParser {
       ) {
         try {
           animeInfo.episodes = (
-            await new Enime().fetchAnimeInfoByMalId(
-              animeId,
-              this.provider.name.toLowerCase() as 'gogoanime' | 'zoro'
-            )
+            await new Anify(
+              this.proxyConfig,
+              this.adapter,
+              this.provider.name.toLowerCase() as 'gogoanime' | 'zoro' | '9anime' | 'animepahe'
+            ).fetchAnimeInfo(animeId)
           ).episodes?.map((item: any) => ({
             id: item.slug,
             title: item.title,
@@ -237,7 +237,7 @@ class Myanimelist extends AnimeParser {
         );
 
       if (fetchFiller) {
-        const { data: fillerData } = await axios({
+        const { data: fillerData } = await this.client({
           baseURL: `https://raw.githubusercontent.com/saikou-app/mal-id-filler-list/main/fillers/${animeId}.json`,
           method: 'GET',
           validateStatus: () => true,
@@ -245,7 +245,12 @@ class Myanimelist extends AnimeParser {
 
         if (!fillerData.toString().startsWith('404')) {
           fillerEpisodes = [];
-          fillerEpisodes?.push(...(fillerData.episodes as { number: string; 'filler-bool': boolean }[]));
+          fillerEpisodes?.push(
+            ...(fillerData.episodes as {
+              number: string;
+              'filler-bool': boolean;
+            }[])
+          );
         }
       }
 
@@ -271,10 +276,15 @@ class Myanimelist extends AnimeParser {
     }
   };
 
-  fetchEpisodeSources(episodeId: string, ...args: any): Promise<ISource> {
-    if (episodeId.includes('enime')) return new Enime().fetchEpisodeSources(episodeId);
-    return this.provider.fetchEpisodeSources(episodeId, ...args);
-  }
+  override fetchEpisodeSources = async (episodeId: string, ...args: any): Promise<ISource> => {
+    try {
+      if (episodeId.includes('/') && this.provider instanceof Anify)
+        return new Anify().fetchEpisodeSources(episodeId, args[0], args[1]);
+      return this.provider.fetchEpisodeSources(episodeId, ...args);
+    } catch (err) {
+      throw new Error(`Failed to fetch episode sources from ${this.provider.name}: ${err}`);
+    }
+  };
 
   fetchEpisodeServers(episodeId: string): Promise<IEpisodeServer[]> {
     return this.provider.fetchEpisodeServers(episodeId);
@@ -284,7 +294,9 @@ class Myanimelist extends AnimeParser {
     if (externalLinks && this.provider instanceof Crunchyroll) {
       if (externalLinks.map((link: any) => link.site.includes('Crunchyroll'))) {
         const link = externalLinks.find((link: any) => link.site.includes('Crunchyroll'));
-        const { request } = await axios.get(link.url, { validateStatus: () => true });
+        const { request } = await this.client.get(link.url, {
+          validateStatus: () => true,
+        });
         const mediaType = request.res.responseUrl.split('/')[3];
         const id = request.res.responseUrl.split('/')[4];
 
@@ -330,7 +342,7 @@ class Myanimelist extends AnimeParser {
     dub: boolean,
     externalLinks?: any
   ): Promise<IAnimeEpisode[]> => {
-    if (this.provider instanceof Enime) return (await this.provider.fetchAnimeInfoByMalId(malId)).episodes!;
+    if (this.provider instanceof Anify) return (await this.provider.fetchAnimeInfo(malId)).episodes!;
 
     // console.log({ title });
     const slug = title?.replace(/[^0-9a-zA-Z]+/g, ' ');
@@ -338,7 +350,7 @@ class Myanimelist extends AnimeParser {
     let possibleAnime: any | undefined;
 
     if (malId && !(this.provider instanceof Crunchyroll || this.provider instanceof Bilibili)) {
-      const malAsyncReq = await axios({
+      const malAsyncReq = await this.client({
         method: 'GET',
         url: `${this.malSyncUrl}/mal/anime/${malId}`,
         validateStatus: () => true,
@@ -346,11 +358,17 @@ class Myanimelist extends AnimeParser {
 
       if (malAsyncReq.status === 200) {
         const sitesT = malAsyncReq.data.Sites as {
-          [k: string]: { [k: string]: { url: string; page: string; title: string } };
+          [k: string]: {
+            [k: string]: { url: string; page: string; title: string };
+          };
         };
         let sites = Object.values(sitesT).map((v, i) => {
           const obj = [...Object.values(Object.values(sitesT)[i])];
-          const pages = obj.map(v => ({ page: v.page, url: v.url, title: v.title }));
+          const pages = obj.map(v => ({
+            page: v.page,
+            url: v.url,
+            title: v.title,
+          }));
           return pages;
         }) as any[];
 
@@ -449,7 +467,7 @@ class Myanimelist extends AnimeParser {
     season?: string,
     startDate?: number
   ) => {
-    const kitsuEpisodes = await axios.post(this.kitsuGraphqlUrl, options);
+    const kitsuEpisodes = await this.client.post(this.kitsuGraphqlUrl, options);
     const episodesList = new Map();
     if (kitsuEpisodes?.data.data) {
       const { nodes } = kitsuEpisodes.data.data.searchAnimeByTitle;
@@ -521,7 +539,7 @@ class Myanimelist extends AnimeParser {
       title: '',
     };
 
-    const { data } = await axios.request({
+    const { data } = await this.client.request({
       method: 'GET',
       url: `https://myanimelist.net/anime/${id}`,
       headers: {

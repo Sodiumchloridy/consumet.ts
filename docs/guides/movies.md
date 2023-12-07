@@ -9,7 +9,7 @@ By using `MOVIES` category you can interact with the movie providers. And have a
 import { MOVIES } from '@consumet/extensions';
 
 // <providerName> is the name of the provider you want to use. list of the proivders is below.
-const movieProvider = MOVIES.<providerName>();
+const movieProvider = new MOVIES.<providerName>();
 ```
 
 ## Common Methods
@@ -34,6 +34,8 @@ const movieProvider = MOVIES.<providerName>();
 ## Movies Providers List
 This list is in alphabetical order. (except the sub bullet points)
 
+- [Goku](../providers/goku.md)
+- [MovieHdWatch](../providers/moviehdwatch.md)
 - [FlixHQ](../providers/flixhq.md)
 - [ViewAsian](../providers/viewAsian.md)
 

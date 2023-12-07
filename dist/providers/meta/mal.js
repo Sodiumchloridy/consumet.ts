@@ -3,14 +3,13 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-const axios_1 = __importDefault(require("axios"));
 const cheerio_1 = require("cheerio");
 const models_1 = require("../../models");
 const utils_1 = require("../../utils");
 const gogoanime_1 = __importDefault(require("../anime/gogoanime"));
 const zoro_1 = __importDefault(require("../anime/zoro"));
 const crunchyroll_1 = __importDefault(require("../anime/crunchyroll"));
-const enime_1 = __importDefault(require("../anime/enime"));
+const anify_1 = __importDefault(require("../anime/anify"));
 const bilibili_1 = __importDefault(require("../anime/bilibili"));
 class Myanimelist extends models_1.AnimeParser {
     /**
@@ -23,17 +22,17 @@ class Myanimelist extends models_1.AnimeParser {
         this.name = 'Myanimelist';
         this.baseUrl = 'https://myanimelist.net/';
         this.logo = 'https://en.wikipedia.org/wiki/MyAnimeList#/media/File:MyAnimeList.png';
-        this.classPath = 'META.MAL';
+        this.classPath = 'META.Myanimelist';
         this.anilistGraphqlUrl = 'https://graphql.anilist.co';
         this.kitsuGraphqlUrl = 'https://kitsu.io/api/graphql';
         this.malSyncUrl = 'https://api.malsync.moe';
-        this.enimeUrl = 'https://api.enime.moe';
+        this.anifyUrl = 'https://api.anify.tv';
         this.search = async (query, page = 1) => {
             const searchResults = {
                 currentPage: page,
                 results: [],
             };
-            const { data } = await axios_1.default.request({
+            const { data } = await this.client.request({
                 method: 'get',
                 url: `https://myanimelist.net/anime.php?q=${query}&cat=anime&show=${50 * (page - 1)}`,
                 headers: {
@@ -105,7 +104,7 @@ class Myanimelist extends models_1.AnimeParser {
                     (animeInfo.status === models_1.MediaStatus.ONGOING ||
                         (0, utils_1.range)({ from: 2000, to: new Date().getFullYear() + 1 }).includes((_a = animeInfo.startDate) === null || _a === void 0 ? void 0 : _a.year))) {
                     try {
-                        animeInfo.episodes = (_b = (await new enime_1.default().fetchAnimeInfoByMalId(animeId, this.provider.name.toLowerCase())).episodes) === null || _b === void 0 ? void 0 : _b.map((item) => ({
+                        animeInfo.episodes = (_b = (await new anify_1.default(this.proxyConfig, this.adapter, this.provider.name.toLowerCase()).fetchAnimeInfo(animeId)).episodes) === null || _b === void 0 ? void 0 : _b.map((item) => ({
                             id: item.slug,
                             title: item.title,
                             description: item.description,
@@ -133,7 +132,7 @@ class Myanimelist extends models_1.AnimeParser {
                         (titleWithLanguages === null || titleWithLanguages === void 0 ? void 0 : titleWithLanguages.native) ||
                         (titleWithLanguages === null || titleWithLanguages === void 0 ? void 0 : titleWithLanguages.userPreferred), animeInfo.season, (_f = animeInfo.startDate) === null || _f === void 0 ? void 0 : _f.year, animeId, dub);
                 if (fetchFiller) {
-                    const { data: fillerData } = await (0, axios_1.default)({
+                    const { data: fillerData } = await this.client({
                         baseURL: `https://raw.githubusercontent.com/saikou-app/mal-id-filler-list/main/fillers/${animeId}.json`,
                         method: 'GET',
                         validateStatus: () => true,
@@ -161,11 +160,23 @@ class Myanimelist extends models_1.AnimeParser {
                 throw err;
             }
         };
+        this.fetchEpisodeSources = async (episodeId, ...args) => {
+            try {
+                if (episodeId.includes('/') && this.provider instanceof anify_1.default)
+                    return new anify_1.default().fetchEpisodeSources(episodeId, args[0], args[1]);
+                return this.provider.fetchEpisodeSources(episodeId, ...args);
+            }
+            catch (err) {
+                throw new Error(`Failed to fetch episode sources from ${this.provider.name}: ${err}`);
+            }
+        };
         this.findAnimeRaw = async (slug, externalLinks) => {
             if (externalLinks && this.provider instanceof crunchyroll_1.default) {
                 if (externalLinks.map((link) => link.site.includes('Crunchyroll'))) {
                     const link = externalLinks.find((link) => link.site.includes('Crunchyroll'));
-                    const { request } = await axios_1.default.get(link.url, { validateStatus: () => true });
+                    const { request } = await this.client.get(link.url, {
+                        validateStatus: () => true,
+                    });
                     const mediaType = request.res.responseUrl.split('/')[3];
                     const id = request.res.responseUrl.split('/')[4];
                     return await this.provider.fetchAnimeInfo(id, mediaType);
@@ -201,13 +212,13 @@ class Myanimelist extends models_1.AnimeParser {
         };
         this.findAnimeSlug = async (title, season, startDate, malId, dub, externalLinks) => {
             var _a, _b, _c;
-            if (this.provider instanceof enime_1.default)
-                return (await this.provider.fetchAnimeInfoByMalId(malId)).episodes;
+            if (this.provider instanceof anify_1.default)
+                return (await this.provider.fetchAnimeInfo(malId)).episodes;
             // console.log({ title });
             const slug = title === null || title === void 0 ? void 0 : title.replace(/[^0-9a-zA-Z]+/g, ' ');
             let possibleAnime;
             if (malId && !(this.provider instanceof crunchyroll_1.default || this.provider instanceof bilibili_1.default)) {
-                const malAsyncReq = await (0, axios_1.default)({
+                const malAsyncReq = await this.client({
                     method: 'GET',
                     url: `${this.malSyncUrl}/mal/anime/${malId}`,
                     validateStatus: () => true,
@@ -216,7 +227,11 @@ class Myanimelist extends models_1.AnimeParser {
                     const sitesT = malAsyncReq.data.Sites;
                     let sites = Object.values(sitesT).map((v, i) => {
                         const obj = [...Object.values(Object.values(sitesT)[i])];
-                        const pages = obj.map(v => ({ page: v.page, url: v.url, title: v.title }));
+                        const pages = obj.map(v => ({
+                            page: v.page,
+                            url: v.url,
+                            title: v.title,
+                        }));
                         return pages;
                     });
                     sites = sites.flat();
@@ -295,7 +310,7 @@ class Myanimelist extends models_1.AnimeParser {
             return newEpisodeList;
         };
         this.findKitsuAnime = async (possibleProviderEpisodes, options, season, startDate) => {
-            const kitsuEpisodes = await axios_1.default.post(this.kitsuGraphqlUrl, options);
+            const kitsuEpisodes = await this.client.post(this.kitsuGraphqlUrl, options);
             const episodesList = new Map();
             if (kitsuEpisodes === null || kitsuEpisodes === void 0 ? void 0 : kitsuEpisodes.data.data) {
                 const { nodes } = kitsuEpisodes.data.data.searchAnimeByTitle;
@@ -362,7 +377,7 @@ class Myanimelist extends models_1.AnimeParser {
                 id: id,
                 title: '',
             };
-            const { data } = await axios_1.default.request({
+            const { data } = await this.client.request({
                 method: 'GET',
                 url: `https://myanimelist.net/anime/${id}`,
                 headers: {
@@ -551,7 +566,7 @@ class Myanimelist extends models_1.AnimeParser {
     }
     async populateEpisodeList(episodes, url, count = 1) {
         try {
-            const { data } = await axios_1.default.request({
+            const { data } = await this.client.request({
                 method: 'get',
                 url: `${url}?p=${count}`,
                 headers: {
@@ -587,11 +602,6 @@ class Myanimelist extends models_1.AnimeParser {
         catch (err) {
             console.error(err);
         }
-    }
-    fetchEpisodeSources(episodeId, ...args) {
-        if (episodeId.includes('enime'))
-            return new enime_1.default().fetchEpisodeSources(episodeId);
-        return this.provider.fetchEpisodeSources(episodeId, ...args);
     }
     fetchEpisodeServers(episodeId) {
         return this.provider.fetchEpisodeServers(episodeId);

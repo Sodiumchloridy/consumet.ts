@@ -1,4 +1,4 @@
-import axios from 'axios';
+import { AxiosAdapter } from 'axios';
 import { load } from 'cheerio';
 
 import {
@@ -10,6 +10,7 @@ import {
   ISource,
   IMovieResult,
   ISearch,
+  ProxyConfig,
 } from '../../models';
 import { MixDrop, AsianLoad, StreamTape, StreamSB } from '../../extractors';
 
@@ -28,7 +29,7 @@ class ViewAsian extends MovieParser {
     };
 
     try {
-      const { data } = await axios.get(
+      const { data } = await this.client.get(
         `${this.baseUrl}/movie/search/${query.replace(/[\W_]+/g, '-')}?page=${page}`
       );
 
@@ -73,12 +74,13 @@ class ViewAsian extends MovieParser {
     };
 
     try {
-      const { data } = await axios.get(mediaId);
+      const { data } = await this.client.get(mediaId);
 
       const $ = load(data);
 
       mediaInfo.id = realMediaId;
       mediaInfo.title = $('.detail-mod h3').text();
+      mediaInfo.banner = $('.detail-mod > dm-thumb > img').attr('src');
       mediaInfo.otherNames = $('.other-name a')
         .map((i, el) => $(el).attr('title')!.trim())
         .get();
@@ -116,29 +118,33 @@ class ViewAsian extends MovieParser {
       const serverUrl = new URL(episodeId);
       switch (server) {
         case StreamingServers.AsianLoad:
-          return { ...(await new AsianLoad().extract(serverUrl)) };
+          return {
+            ...(await new AsianLoad(this.proxyConfig, this.adapter).extract(serverUrl)),
+          };
         case StreamingServers.MixDrop:
           return {
-            sources: await new MixDrop().extract(serverUrl),
+            sources: await new MixDrop(this.proxyConfig, this.adapter).extract(serverUrl),
           };
         case StreamingServers.StreamTape:
           return {
-            sources: await new StreamTape().extract(serverUrl),
+            sources: await new StreamTape(this.proxyConfig, this.adapter).extract(serverUrl),
           };
         case StreamingServers.StreamSB:
           return {
-            sources: await new StreamSB().extract(serverUrl),
+            sources: await new StreamSB(this.proxyConfig, this.adapter).extract(serverUrl),
           };
         default:
           throw new Error('Server not supported');
       }
     }
     if (!episodeId.includes('$episode$')) throw new Error('Invalid episode id');
-    episodeId = `${this.baseUrl}${episodeId.replace('$episode$', '?ep=')}`;
+    episodeId = `${episodeId.replace('$episode$', '?ep=')}`;
 
     // return episodeId;
     try {
-      const { data } = await axios.get(episodeId);
+      if (!episodeId.startsWith(this.baseUrl)) episodeId = `${this.baseUrl}/${episodeId}`;
+
+      const { data } = await this.client.get(episodeId);
 
       const $ = load(data);
 
@@ -147,7 +153,7 @@ class ViewAsian extends MovieParser {
         // asianload is the same as the standard server
         case StreamingServers.AsianLoad:
           serverUrl = `https:${$('.anime:contains(Asianload)').attr('data-video')}`;
-          if (!serverUrl.includes('asian')) throw new Error('Try another server');
+          if (!serverUrl.includes('draplay2')) throw new Error('Try another server');
           break;
         case StreamingServers.MixDrop:
           serverUrl = $('.mixdrop').attr('data-video') as string;

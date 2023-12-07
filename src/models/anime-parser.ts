@@ -1,4 +1,5 @@
-import { BaseParser, IAnimeInfo, ISource, IEpisodeServer } from '.';
+import { BaseParser, IAnimeInfo, ISource, IEpisodeServer, ProxyConfig } from '.';
+import { AxiosAdapter } from 'axios';
 
 abstract class AnimeParser extends BaseParser {
   /**

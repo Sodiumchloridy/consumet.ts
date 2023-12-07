@@ -1,5 +1,5 @@
 import { load } from 'cheerio';
-import axios from 'axios';
+import { AxiosAdapter } from 'axios';
 
 import {
   MovieParser,
@@ -32,7 +32,7 @@ class FlixHQ extends MovieParser {
       results: [],
     };
     try {
-      const { data } = await axios.get(
+      const { data } = await this.client.get(
         `${this.baseUrl}/search/${query.replace(/[\W_]+/g, '-')}?page=${page}`
       );
 
@@ -80,7 +80,7 @@ class FlixHQ extends MovieParser {
       url: mediaId,
     };
     try {
-      const { data } = await axios.get(mediaId);
+      const { data } = await this.client.get(mediaId);
       const $ = load(data);
       const recommendationsArray: IMovieResult[] = [];
 
@@ -128,7 +128,7 @@ class FlixHQ extends MovieParser {
         }/${id}`;
 
       if (movieInfo.type === TvType.TVSERIES) {
-        const { data } = await axios.get(ajaxReqUrl(uid, 'tv', true));
+        const { data } = await this.client.get(ajaxReqUrl(uid, 'tv', true));
         const $$ = load(data);
         const seasonsIds = $$('.dropdown-menu > a')
           .map((i, el) => $(el).attr('data-id'))
@@ -137,7 +137,7 @@ class FlixHQ extends MovieParser {
         movieInfo.episodes = [];
         let season = 1;
         for (const id of seasonsIds) {
-          const { data } = await axios.get(ajaxReqUrl(id, 'season'));
+          const { data } = await this.client.get(ajaxReqUrl(id, 'season'));
           const $$$ = load(data);
 
           $$$('.nav > li')
@@ -187,22 +187,22 @@ class FlixHQ extends MovieParser {
         case StreamingServers.MixDrop:
           return {
             headers: { Referer: serverUrl.href },
-            sources: await new MixDrop().extract(serverUrl),
+            sources: await new MixDrop(this.proxyConfig, this.adapter).extract(serverUrl),
           };
         case StreamingServers.VidCloud:
           return {
             headers: { Referer: serverUrl.href },
-            ...(await new VidCloud().extract(serverUrl, true)),
+            ...(await new VidCloud(this.proxyConfig, this.adapter).extract(serverUrl, true)),
           };
         case StreamingServers.UpCloud:
           return {
             headers: { Referer: serverUrl.href },
-            ...(await new VidCloud().extract(serverUrl)),
+            ...(await new VidCloud(this.proxyConfig, this.adapter).extract(serverUrl)),
           };
         default:
           return {
             headers: { Referer: serverUrl.href },
-            sources: await new MixDrop().extract(serverUrl),
+            sources: await new MixDrop(this.proxyConfig, this.adapter).extract(serverUrl),
           };
       }
     }
@@ -216,7 +216,7 @@ class FlixHQ extends MovieParser {
         throw new Error(`Server ${server} not found`);
       }
 
-      const { data } = await axios.get(
+      const { data } = await this.client.get(
         `${this.baseUrl}/ajax/get_link/${servers[i].url.split('.').slice(-1).shift()}`
       );
 
@@ -239,7 +239,7 @@ class FlixHQ extends MovieParser {
     else episodeId = `${this.baseUrl}/ajax/movie/episodes/${episodeId}`;
 
     try {
-      const { data } = await axios.get(episodeId);
+      const { data } = await this.client.get(episodeId);
       const $ = load(data);
 
       const servers = $('.nav > li')
@@ -268,7 +268,7 @@ class FlixHQ extends MovieParser {
 
   fetchRecentMovies = async (): Promise<IMovieResult[]> => {
     try {
-      const { data } = await axios.get(`${this.baseUrl}/home`);
+      const { data } = await this.client.get(`${this.baseUrl}/home`);
       const $ = load(data);
 
       const movies = $(
@@ -299,7 +299,7 @@ class FlixHQ extends MovieParser {
 
   fetchRecentTvShows = async (): Promise<IMovieResult[]> => {
     try {
-      const { data } = await axios.get(`${this.baseUrl}/home`);
+      const { data } = await this.client.get(`${this.baseUrl}/home`);
       const $ = load(data);
 
       const tvshows = $(
@@ -329,7 +329,7 @@ class FlixHQ extends MovieParser {
 
   fetchTrendingMovies = async (): Promise<IMovieResult[]> => {
     try {
-      const { data } = await axios.get(`${this.baseUrl}/home`);
+      const { data } = await this.client.get(`${this.baseUrl}/home`);
       const $ = load(data);
 
       const movies = $('div#trending-movies div.film_list-wrap div.flw-item')
@@ -358,7 +358,7 @@ class FlixHQ extends MovieParser {
 
   fetchTrendingTvShows = async (): Promise<IMovieResult[]> => {
     try {
-      const { data } = await axios.get(`${this.baseUrl}/home`);
+      const { data } = await this.client.get(`${this.baseUrl}/home`);
       const $ = load(data);
 
       const tvshows = $('div#trending-tv div.film_list-wrap div.flw-item')

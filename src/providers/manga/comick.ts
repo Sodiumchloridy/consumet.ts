@@ -1,5 +1,4 @@
 import axios, { AxiosError } from 'axios';
-
 import { IMangaChapterPage, IMangaInfo, IMangaResult, ISearch, MangaParser, MediaStatus } from '../../models';
 
 class ComicK extends MangaParser {
@@ -10,6 +9,15 @@ class ComicK extends MangaParser {
 
   private readonly apiUrl = 'https://api.comick.app';
 
+  private _axios() {
+    return axios.create({
+      baseURL: this.apiUrl,
+      headers: {
+        'User-Agent': 'Mozilla/5.0',
+      },
+    });
+  }
+
   /**
    * @description Fetches info about the manga
    * @param mangaId Comic slug
@@ -17,19 +25,19 @@ class ComicK extends MangaParser {
    */
   override fetchMangaInfo = async (mangaId: string): Promise<IMangaInfo> => {
     try {
-      const req = await axios.get(`${this.apiUrl}/comic/${mangaId}`);
+      const req = await this._axios().get(`/comic/${mangaId}`);
       const data: Comic = req.data.comic;
-      
-      const links = Object.values(data.links ?? []).filter((link) => link !== null);
+
+      const links = Object.values(data.links ?? []).filter(link => link !== null);
 
       const mangaInfo: IMangaInfo = {
-        id: String(data.id),
+        id: data.hid,
         title: data.title,
-        altTitles: data.md_titles ? data.md_titles.map((title) => title.title) : [],
+        altTitles: data.md_titles ? data.md_titles.map(title => title.title) : [],
         description: data.desc,
-        genres: data.md_comic_md_genres?.map((genre) => genre.md_genres.name),
+        genres: data.md_comic_md_genres?.map(genre => genre.md_genres.name),
         status: data.status ?? 0 === 0 ? MediaStatus.ONGOING : MediaStatus.COMPLETED,
-        image: `https://meo.comick.pictures${data.md_covers ? data.md_covers[0].b2key : ""}`,
+        image: `https://meo.comick.pictures${data.md_covers ? data.md_covers[0].b2key : ''}`,
         malId: data.links?.mal,
         links: links,
         chapters: [],
@@ -56,21 +64,21 @@ class ComicK extends MangaParser {
   };
 
   /**
-   * 
+   *
    * @param chapterId Chapter ID (HID)
    * @returns Promise<IMangaChapterPage[]>
    */
   override fetchChapterPages = async (chapterId: string): Promise<IMangaChapterPage[]> => {
     try {
-      const { data } = await axios(`${this.apiUrl}/chapter/${chapterId}`);
+      const { data } = await this._axios().get(`/chapter/${chapterId}`);
 
       const pages: { img: string; page: number }[] = [];
 
-      data.chapter.md_images.map((image: { b2key: string; w: string; }, index:number) => {
-          pages.push({
-              img: `https://meo.comick.pictures/${image.b2key}?width=${image.w}`,
-              page: index
-          });
+      data.chapter.md_images.map((image: { b2key: string; w: string }, index: number) => {
+        pages.push({
+          img: `https://meo.comick.pictures/${image.b2key}?width=${image.w}`,
+          page: index,
+        });
       });
 
       return pages;
@@ -94,8 +102,8 @@ class ComicK extends MangaParser {
     if (limit * (page - 1) >= 10000) throw new Error('not enough results');
 
     try {
-      const res = await axios.get(
-        `${this.apiUrl}/v1.0/search?q=${encodeURIComponent(query)}&limit=${limit}&page=${page}`
+      const req = await this._axios().get(
+        `/v1.0/search?q=${encodeURIComponent(query)}&limit=${limit}&page=${page}`
       );
 
       const results: ISearch<IMangaResult> = {
@@ -103,19 +111,19 @@ class ComicK extends MangaParser {
         results: [],
       };
 
-      const data: SearchResult[] = res.data;
+      const data: SearchResult[] = await req.data;
 
       for (const manga of data) {
-        let cover:Cover | string | null = manga.md_covers ? manga.md_covers[0] : null;
+        let cover: Cover | string | null = manga.md_covers ? manga.md_covers[0] : null;
         if (cover && cover.b2key != undefined) {
-            cover = `https://meo.comick.pictures${cover.b2key}`;
+          cover = `https://meo.comick.pictures${cover.b2key}`;
         }
 
         results.results.push({
           id: manga.slug,
           title: manga.title ?? manga.slug,
-          altTitles: manga.md_titles ? manga.md_titles.map((title) => title.title) : [],
-          image: cover as string
+          altTitles: manga.md_titles ? manga.md_titles.map(title => title.title) : [],
+          image: cover as string,
         });
       }
 
@@ -125,27 +133,24 @@ class ComicK extends MangaParser {
     }
   };
 
-  private fetchAllChapters = async (
-    mangaId: string,
-    page: number
-  ): Promise<any[]> => {
+  private fetchAllChapters = async (mangaId: string, page: number): Promise<any[]> => {
     if (page <= 0) {
       page = 1;
     }
     const comicId = await this.getComicId(mangaId);
-    const data = await axios(`${this.apiUrl}/comic/${comicId}/chapter?page=${page}`);
-    return data.data.chapters;
+    const req = await this._axios().get(`/comic/${comicId}/chapters?page=${page}`);
+    return req.data.chapters;
   };
 
   /**
-   * @description Fetches the comic ID from the slug
+   * @description Fetches the comic HID from the slug
    * @param id Comic slug
-   * @returns Promise<number> -1 if not found
+   * @returns Promise<string> empty if not found
    */
-  private async getComicId(id:string): Promise<number> {
-    const req = await axios(`${this.apiUrl}/comic/${id}`);
-    const data:Comic = req.data["comic"];
-    return data ? data.id : -1;
+  private async getComicId(id: string): Promise<string> {
+    const req = await this._axios().get(`/comic/${id}`);
+    const data: Comic = req.data['comic'];
+    return data ? data.hid : '';
   }
 }
 
@@ -186,7 +191,7 @@ interface MDTitle {
 }
 
 interface Comic {
-  id: number;
+  hid: string;
   title: string;
   country: string;
   status: number;
@@ -212,7 +217,10 @@ interface Comic {
   mies: any;
   md_titles: Array<ComicTitles>;
   md_comic_md_genres: Array<ComicGenres>;
-  mu_comics: { licensed_in_english: any, mu_comic_categories: Array<ComicCategories> };
+  mu_comics: {
+    licensed_in_english: any;
+    mu_comic_categories: Array<ComicCategories>;
+  };
   md_covers: Array<Cover>;
   iso639_1: string;
   lang_name: string;
@@ -238,18 +246,18 @@ interface ComicTitles {
 
 interface ComicGenres {
   md_genres: {
-      name: string;
-      type: string|null;
-      slug: string;
-      group: string;
-  }
+    name: string;
+    type: string | null;
+    slug: string;
+    group: string;
+  };
 }
 
 interface ComicCategories {
   mu_categories: {
-      title: string;
-      slug: string;
-  }
+    title: string;
+    slug: string;
+  };
   positive_vote: number;
   negative_vote: number;
 }
@@ -264,7 +272,7 @@ interface ChapterData {
   created_at: string;
   updated_at: string;
   up_count: number;
-  down_coount: number;
+  down_count: number;
   group_name: string[];
   hid: string;
   md_groups: string[];

@@ -3,7 +3,6 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-const axios_1 = __importDefault(require("axios"));
 const cheerio_1 = require("cheerio");
 const crypto_js_1 = __importDefault(require("crypto-js"));
 const models_1 = require("../models");
@@ -22,10 +21,10 @@ class GogoCDN extends models_1.VideoExtractor {
         this.extract = async (videoUrl) => {
             var _a;
             this.referer = videoUrl.href;
-            const res = await axios_1.default.get(videoUrl.href);
+            const res = await this.client.get(videoUrl.href);
             const $ = (0, cheerio_1.load)(res.data);
             const encyptedParams = await this.generateEncryptedAjaxParams($, (_a = videoUrl.searchParams.get('id')) !== null && _a !== void 0 ? _a : '');
-            const encryptedData = await axios_1.default.get(`${videoUrl.protocol}//${videoUrl.hostname}/encrypt-ajax.php?${encyptedParams}`, {
+            const encryptedData = await this.client.get(`${videoUrl.protocol}//${videoUrl.hostname}/encrypt-ajax.php?${encyptedParams}`, {
                 headers: {
                     'X-Requested-With': 'XMLHttpRequest',
                 },
@@ -34,7 +33,7 @@ class GogoCDN extends models_1.VideoExtractor {
             if (!decryptedData.source)
                 throw new Error('No source found. Try a different server.');
             if (decryptedData.source[0].file.includes('.m3u8')) {
-                const resResult = await axios_1.default.get(decryptedData.source[0].file.toString());
+                const resResult = await this.client.get(decryptedData.source[0].file.toString());
                 const resolutions = resResult.data.match(/(RESOLUTION=)(.*)(\s*?)(\s*.*)/g);
                 resolutions === null || resolutions === void 0 ? void 0 : resolutions.forEach((res) => {
                     const index = decryptedData.source[0].file.lastIndexOf('/');
@@ -73,7 +72,7 @@ class GogoCDN extends models_1.VideoExtractor {
         };
         this.addSources = async (source) => {
             if (source.file.includes('m3u8')) {
-                const m3u8Urls = await axios_1.default
+                const m3u8Urls = await this.client
                     .get(source.file, {
                     headers: {
                         Referer: this.referer,
@@ -108,7 +107,7 @@ class GogoCDN extends models_1.VideoExtractor {
             const encryptedKey = crypto_js_1.default.AES.encrypt(id, this.keys.key, {
                 iv: this.keys.iv,
             });
-            const scriptValue = $("script[data-name='episode']").data().value;
+            const scriptValue = $("script[data-name='episode']").attr('data-value');
             const decryptedToken = crypto_js_1.default.AES.decrypt(scriptValue, this.keys.key, {
                 iv: this.keys.iv,
             }).toString(crypto_js_1.default.enc.Utf8);

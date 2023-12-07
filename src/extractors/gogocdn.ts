@@ -1,8 +1,7 @@
-import axios from 'axios';
 import { CheerioAPI, load } from 'cheerio';
 import CryptoJS from 'crypto-js';
 
-import { VideoExtractor, IVideo } from '../models';
+import { VideoExtractor, IVideo, ProxyConfig } from '../models';
 import { USER_AGENT } from '../utils';
 
 class GogoCDN extends VideoExtractor {
@@ -20,12 +19,12 @@ class GogoCDN extends VideoExtractor {
   override extract = async (videoUrl: URL): Promise<IVideo[]> => {
     this.referer = videoUrl.href;
 
-    const res = await axios.get(videoUrl.href);
+    const res = await this.client.get(videoUrl.href);
     const $ = load(res.data);
 
     const encyptedParams = await this.generateEncryptedAjaxParams($, videoUrl.searchParams.get('id') ?? '');
 
-    const encryptedData = await axios.get(
+    const encryptedData = await this.client.get(
       `${videoUrl.protocol}//${videoUrl.hostname}/encrypt-ajax.php?${encyptedParams}`,
       {
         headers: {
@@ -38,7 +37,7 @@ class GogoCDN extends VideoExtractor {
     if (!decryptedData.source) throw new Error('No source found. Try a different server.');
 
     if (decryptedData.source[0].file.includes('.m3u8')) {
-      const resResult = await axios.get(decryptedData.source[0].file.toString());
+      const resResult = await this.client.get(decryptedData.source[0].file.toString());
       const resolutions = resResult.data.match(/(RESOLUTION=)(.*)(\s*?)(\s*.*)/g);
       resolutions?.forEach((res: string) => {
         const index = decryptedData.source[0].file.lastIndexOf('/');
@@ -80,7 +79,7 @@ class GogoCDN extends VideoExtractor {
 
   private addSources = async (source: any) => {
     if (source.file.includes('m3u8')) {
-      const m3u8Urls = await axios
+      const m3u8Urls = await this.client
         .get(source.file, {
           headers: {
             Referer: this.referer,
@@ -121,7 +120,7 @@ class GogoCDN extends VideoExtractor {
       iv: this.keys.iv,
     });
 
-    const scriptValue = $("script[data-name='episode']").data().value as string;
+    const scriptValue = $("script[data-name='episode']").attr('data-value') as string;
 
     const decryptedToken = CryptoJS.AES.decrypt(scriptValue, this.keys.key, {
       iv: this.keys.iv,

@@ -4,7 +4,6 @@ declare class Zoro extends AnimeParser {
     protected baseUrl: string;
     protected logo: string;
     protected classPath: string;
-    constructor(zoroBase?: string);
     /**
      * @param query Search query
      * @param page Page number (optional)

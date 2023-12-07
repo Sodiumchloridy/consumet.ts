@@ -1,4 +1,4 @@
-import axios from 'axios';
+import { AxiosAdapter } from 'axios';
 import { load } from 'cheerio';
 
 import {
@@ -13,6 +13,7 @@ import {
   StreamingServers,
   MediaFormat,
   SubOrSub,
+  ProxyConfig,
 } from '../../models';
 
 import { StreamSB, RapidCloud, StreamTape } from '../../utils';
@@ -20,15 +21,11 @@ import { USER_AGENT } from '../../utils';
 
 class Zoro extends AnimeParser {
   override readonly name = 'Zoro';
-  protected override baseUrl = 'https://zoro.to';
+  protected override baseUrl = 'https://aniwatch.to';
   protected override logo =
     'https://is3-ssl.mzstatic.com/image/thumb/Purple112/v4/7e/91/00/7e9100ee-2b62-0942-4cdc-e9b93252ce1c/source/512x512bb.jpg';
   protected override classPath = 'ANIME.Zoro';
 
-  constructor(zoroBase?: string) {
-    super();
-    this.baseUrl = zoroBase ? zoroBase : this.baseUrl;
-  }
   /**
    * @param query Search query
    * @param page Page number (optional)
@@ -42,23 +39,25 @@ class Zoro extends AnimeParser {
     };
 
     try {
-      const { data } = await axios.get(
+      const { data } = await this.client.get(
         `${this.baseUrl}/search?keyword=${decodeURIComponent(query)}&page=${page}`
       );
       const $ = load(data);
 
       res.hasNextPage =
-        $('.pagination > li').length > 0 ?
-          $('.pagination li.active').length > 0 ?
-            $('.pagination > li').last().hasClass('active') ? false : true
-          : false
-        : false;
+        $('.pagination > li').length > 0
+          ? $('.pagination li.active').length > 0
+            ? $('.pagination > li').last().hasClass('active')
+              ? false
+              : true
+            : false
+          : false;
 
-      res.totalPages = parseInt(
-        $('.pagination > .page-item a[title="Last"]')?.attr('href')?.split("=").pop()
-          ??
-        $('.pagination > .page-item.active a')?.text()?.trim()
-      ) || 0;
+      res.totalPages =
+        parseInt(
+          $('.pagination > .page-item a[title="Last"]')?.attr('href')?.split('=').pop() ??
+            $('.pagination > .page-item.active a')?.text()?.trim()
+        ) || 0;
 
       if (res.totalPages === 0 && !res.hasNextPage) res.totalPages = 1;
 
@@ -103,7 +102,7 @@ class Zoro extends AnimeParser {
       title: '',
     };
     try {
-      const { data } = await axios.get(`${this.baseUrl}/watch/${id}`);
+      const { data } = await this.client.get(`${this.baseUrl}/watch/${id}`);
       const $ = load(data);
 
       const { mal_id, anilist_id } = JSON.parse($('#syncData').text());
@@ -116,23 +115,30 @@ class Zoro extends AnimeParser {
       info.type = $('span.item').last().prev().prev().text().toUpperCase() as MediaFormat;
       info.url = `${this.baseUrl}/${id}`;
 
-      const subDub = $('div.film-stats span.item div.tick-dub')
-        .toArray()
-        .map(value => $(value).text().toLowerCase());
-      if (subDub.length > 1) {
-        info.subOrDub = SubOrSub.BOTH;
-      } else if (subDub.length > 0) {
-        info.subOrDub = subDub[0] as SubOrSub;
-      } else {
+      const hasSub: boolean = $('div.film-stats div.tick div.tick-item.tick-sub').length > 0;
+      const hasDub: boolean = $('div.film-stats div.tick div.tick-item.tick-dub').length > 0;
+
+      if (hasSub) {
         info.subOrDub = SubOrSub.SUB;
+        info.hasSub = hasSub;
+      }
+      if (hasDub) {
+        info.subOrDub = SubOrSub.DUB;
+        info.hasDub = hasDub;
+      }
+      if (hasSub && hasDub) {
+        info.subOrDub = SubOrSub.BOTH;
       }
 
-      const episodesAjax = await axios.get(`${this.baseUrl}/ajax/v2/episode/list/${id.split('-').pop()}`, {
-        headers: {
-          'X-Requested-With': 'XMLHttpRequest',
-          Referer: `${this.baseUrl}/watch/${id}`,
-        },
-      });
+      const episodesAjax = await this.client.get(
+        `${this.baseUrl}/ajax/v2/episode/list/${id.split('-').pop()}`,
+        {
+          headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            Referer: `${this.baseUrl}/watch/${id}`,
+          },
+        }
+      );
 
       const $$ = load(episodesAjax.data.html);
 
@@ -178,23 +184,27 @@ class Zoro extends AnimeParser {
         case StreamingServers.VidStreaming:
         case StreamingServers.VidCloud:
           return {
-            ...(await new RapidCloud().extract(serverUrl)),
+            ...(await new RapidCloud(this.proxyConfig, this.adapter).extract(serverUrl)),
           };
         case StreamingServers.StreamSB:
           return {
-            headers: { Referer: serverUrl.href, watchsb: 'streamsb', 'User-Agent': USER_AGENT },
-            sources: await new StreamSB().extract(serverUrl, true),
+            headers: {
+              Referer: serverUrl.href,
+              watchsb: 'streamsb',
+              'User-Agent': USER_AGENT,
+            },
+            sources: await new StreamSB(this.proxyConfig, this.adapter).extract(serverUrl, true),
           };
         case StreamingServers.StreamTape:
           return {
             headers: { Referer: serverUrl.href, 'User-Agent': USER_AGENT },
-            sources: await new StreamTape().extract(serverUrl),
+            sources: await new StreamTape(this.proxyConfig, this.adapter).extract(serverUrl),
           };
         default:
         case StreamingServers.VidCloud:
           return {
             headers: { Referer: serverUrl.href },
-            ...(await new RapidCloud().extract(serverUrl)),
+            ...(await new RapidCloud(this.proxyConfig, this.adapter).extract(serverUrl)),
           };
       }
     }
@@ -210,7 +220,7 @@ class Zoro extends AnimeParser {
       .replace(/\$auto|\$sub|\$dub/gi, '')}`;
 
     try {
-      const { data } = await axios.get(
+      const { data } = await this.client.get(
         `${this.baseUrl}/ajax/v2/episode/servers?episodeId=${episodeId.split('?ep=')[1]}`
       );
 
@@ -254,7 +264,7 @@ class Zoro extends AnimeParser {
 
       const {
         data: { link },
-      } = await axios.get(`${this.baseUrl}/ajax/v2/episode/sources?id=${serverId}`);
+      } = await this.client.get(`${this.baseUrl}/ajax/v2/episode/sources?id=${serverId}`);
       return await this.fetchEpisodeSources(link, server);
     } catch (err) {
       throw err;
@@ -273,7 +283,7 @@ class Zoro extends AnimeParser {
    */
   fetchRecentEpisodes = async (page: number = 1): Promise<ISearch<IAnimeResult>> => {
     try {
-      const { data } = await axios.get(`${this.baseUrl}/recently-updated?page=${page}`);
+      const { data } = await this.client.get(`${this.baseUrl}/recently-updated?page=${page}`);
       const $ = load(data);
 
       const hasNextPage =
@@ -318,7 +328,8 @@ class Zoro extends AnimeParser {
 // (async () => {
 //   const zoro = new Zoro();
 //   const anime = await zoro.search('classroom of the elite');
-//   const sources = await zoro.fetchEpisodeSources('bleach-the-movie-fade-to-black-1492$episode$58326');
+//   const info = await zoro.fetchAnimeInfo(anime.results[0].id);
+//   const sources = await zoro.fetchEpisodeSources(info.episodes![0].id);
 //   console.log(sources);
 // })();
 

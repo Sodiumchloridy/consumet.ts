@@ -13,6 +13,11 @@ import {
   StreamTape,
   VidCloud,
   StreamLare,
+  StreamHub,
+  SmashyStream,
+  VidMoly,
+  Mp4Upload,
+  StreamWish,
 } from './extractors';
 import {
   IProviderStats,
@@ -99,8 +104,13 @@ export {
   Kwik,
   RapidCloud,
   StreamTape,
+  StreamHub,
+  SmashyStream,
   VizCloud,
-  Filemoon,
-  BilibiliExtractor,
   AsianLoad,
+  BilibiliExtractor,
+  Filemoon,
+  Mp4Upload,
+  StreamWish,
+  VidMoly,
 };

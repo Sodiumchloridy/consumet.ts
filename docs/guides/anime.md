@@ -16,11 +16,11 @@ const animeProvider = ANIME.<providerName>();
 
 ``languages`` - string, the language of the current provider, return language code, example: ``languages: 'en'``
 
-``isNSFW`` - bool, ``true`` if the provider providers NSFW content.
+``isNSFW`` - bool, ``true`` if the provider provides NSFW content.
 
-``isWorking`` - bool, a bool to identify the state of the current provider, ``true`` if the provider is working, ``false`` otherwise. 
+``isWorking`` - bool, a bool to identify the state of the current provider, ``true`` if the provider is working, ``false`` otherwise.
 
-``isDubAvailableSeparately`` - bool, ``true`` if the provider providers dubbed content. 
+``isDubAvailableSeparately`` - bool, ``true`` if the provider provides dubbed content.
 
 ``name`` - string, the name of the current provider, example: ``name: 'Crunchyroll'``
 
@@ -35,9 +35,10 @@ const animeProvider = ANIME.<providerName>();
 This list is in alphabetical order. (except the sub bullet points)
 
 - [9anime](../providers/9anime.md)
+- [Anify](../providers/anify.md)
 - [AnimeFox](../providers/animefox.md)
 - [AnimePahe](../providers/animepahe.md)
-- [Enime](../providers/enime.md)
+- [AnimeSaturn](../providers/animesaturn.md)
 - [Gogoanime](../providers/gogoanime.md)
 - [Zoro.to](../providers/zoro.md)
 

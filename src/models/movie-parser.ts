@@ -1,4 +1,5 @@
-import { BaseParser, TvType, ISource, IEpisodeServer, IMovieInfo, IAnimeInfo } from '.';
+import { BaseParser, TvType, ISource, IEpisodeServer, IMovieInfo, IAnimeInfo, ProxyConfig } from '.';
+import { AxiosAdapter } from 'axios';
 
 abstract class MovieParser extends BaseParser {
   /**

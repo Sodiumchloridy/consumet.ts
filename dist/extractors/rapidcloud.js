@@ -3,7 +3,6 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-const axios_1 = __importDefault(require("axios"));
 const cheerio_1 = require("cheerio");
 const crypto_js_1 = __importDefault(require("crypto-js"));
 const utils_1 = require("../utils");
@@ -15,8 +14,6 @@ class RapidCloud extends models_1.VideoExtractor {
         this.sources = [];
         this.fallbackKey = 'c1d17096f2ca11b7';
         this.host = 'https://rapid-cloud.co';
-        this.consumetApi = 'https://api.consumet.org';
-        this.enimeApi = 'https://api.enime.moe';
         this.extract = async (videoUrl) => {
             var _a, _b;
             const result = {
@@ -31,29 +28,31 @@ class RapidCloud extends models_1.VideoExtractor {
                     },
                 };
                 let res = null;
-                // let { data: sId } = await axios({
-                //   method: 'GET',
-                //   url: `${this.consumetApi}/utils/rapid-cloud`,
-                //   validateStatus: status => true,
-                // });
-                // if (!sId) {
-                //   sId = await axios({
-                //     method: 'GET',
-                //     url: `${this.enimeApi}/tool/rapid-cloud/server-id`,
-                //     validateStatus: status => true,
-                //   });
-                // }
-                res = await axios_1.default.get(`${this.host}/ajax/embed-6/getSources?id=${id}`, options);
+                res = await this.client.get(`https://${videoUrl.hostname}/embed-2/ajax/e-1/getSources?id=${id}`, options);
                 let { data: { sources, tracks, intro, encrypted }, } = res;
-                let decryptKey = await (await axios_1.default.get('https://github.com/enimax-anime/key/blob/e6/key.txt')).data;
+                let decryptKey = await (await this.client.get('https://raw.githubusercontent.com/theonlymo/keys/e1/key')).data;
                 decryptKey = (0, utils_1.substringBefore)((0, utils_1.substringAfter)(decryptKey, '"blob-code blob-code-inner js-file-line">'), '</td>');
                 if (!decryptKey) {
-                    decryptKey = await (await axios_1.default.get('https://raw.githubusercontent.com/enimax-anime/key/e6/key.txt')).data;
+                    decryptKey = await (await this.client.get('https://raw.githubusercontent.com/theonlymo/keys/e1/key')).data;
                 }
                 if (!decryptKey)
                     decryptKey = this.fallbackKey;
                 try {
                     if (encrypted) {
+                        const sourcesArray = sources.split('');
+                        let extractedKey = '';
+                        let currentIndex = 0;
+                        for (const index of decryptKey) {
+                            const start = index[0] + currentIndex;
+                            const end = start + index[1];
+                            for (let i = start; i < end; i++) {
+                                extractedKey += res.data.sources[i];
+                                sourcesArray[i] = '';
+                            }
+                            currentIndex += index[1];
+                        }
+                        decryptKey = extractedKey;
+                        sources = sourcesArray.join('');
                         const decrypt = crypto_js_1.default.AES.decrypt(sources, decryptKey);
                         sources = JSON.parse(decrypt.toString(crypto_js_1.default.enc.Utf8));
                     }
@@ -70,7 +69,7 @@ class RapidCloud extends models_1.VideoExtractor {
                     result.sources = [];
                     this.sources = [];
                     for (const source of sources) {
-                        const { data } = await axios_1.default.get(source.file, options);
+                        const { data } = await this.client.get(source.file, options);
                         const m3u8data = data
                             .split('\n')
                             .filter((line) => line.includes('.m3u8') && line.includes('RESOLUTION='));
@@ -89,12 +88,12 @@ class RapidCloud extends models_1.VideoExtractor {
                         }
                         result.sources.push(...this.sources);
                     }
-                    if (intro.end > 1) {
-                        result.intro = {
-                            start: intro.start,
-                            end: intro.end,
-                        };
-                    }
+                }
+                if ((intro === null || intro === void 0 ? void 0 : intro.end) > 1) {
+                    result.intro = {
+                        start: intro.start,
+                        end: intro.end,
+                    };
                 }
                 result.sources.push({
                     url: sources[0].file,
@@ -118,7 +117,7 @@ class RapidCloud extends models_1.VideoExtractor {
         this.captcha = async (url, key) => {
             const uri = new URL(url);
             const domain = uri.protocol + '//' + uri.host;
-            const { data } = await axios_1.default.get(`https://www.google.com/recaptcha/api.js?render=${key}`, {
+            const { data } = await this.client.get(`https://www.google.com/recaptcha/api.js?render=${key}`, {
                 headers: {
                     Referer: domain,
                 },
@@ -126,9 +125,9 @@ class RapidCloud extends models_1.VideoExtractor {
             const v = data === null || data === void 0 ? void 0 : data.substring(data.indexOf('/releases/'), data.lastIndexOf('/recaptcha')).split('/releases/')[1];
             //TODO: NEED to fix the co (domain) parameter to work with every domain
             const anchor = `https://www.google.com/recaptcha/api2/anchor?ar=1&hl=en&size=invisible&cb=kr42069kr&k=${key}&co=aHR0cHM6Ly9yYXBpZC1jbG91ZC5ydTo0NDM.&v=${v}`;
-            const c = (0, cheerio_1.load)((await axios_1.default.get(anchor)).data)('#recaptcha-token').attr('value');
+            const c = (0, cheerio_1.load)((await this.client.get(anchor)).data)('#recaptcha-token').attr('value');
             // currently its not returning proper response. not sure why
-            const res = await axios_1.default.post(`https://www.google.com/recaptcha/api2/reload?k=${key}`, {
+            const res = await this.client.post(`https://www.google.com/recaptcha/api2/reload?k=${key}`, {
                 v: v,
                 k: key,
                 c: c,

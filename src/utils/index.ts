@@ -10,6 +10,9 @@ import {
   Filemoon,
   BilibiliExtractor,
   AsianLoad,
+  SmashyStream,
+  StreamHub,
+  VidMoly,
 } from '../extractors';
 import {
   USER_AGENT,
@@ -45,6 +48,8 @@ export {
   USER_AGENT,
   GogoCDN,
   StreamSB,
+  SmashyStream,
+  StreamHub,
   splitAuthor,
   floorID,
   formatTitle,
@@ -78,4 +83,5 @@ export {
   substringAfter,
   substringBefore,
   compareTwoStrings,
+  VidMoly,
 };

@@ -1,18 +1,14 @@
 "use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
 Object.defineProperty(exports, "__esModule", { value: true });
-const axios_1 = __importDefault(require("axios"));
 const cheerio_1 = require("cheerio");
 const models_1 = require("../../models");
 const utils_1 = require("../../utils");
 const utils_2 = require("../../utils");
 class Zoro extends models_1.AnimeParser {
-    constructor(zoroBase) {
-        super();
+    constructor() {
+        super(...arguments);
         this.name = 'Zoro';
-        this.baseUrl = 'https://zoro.to';
+        this.baseUrl = 'https://aniwatch.to';
         this.logo = 'https://is3-ssl.mzstatic.com/image/thumb/Purple112/v4/7e/91/00/7e9100ee-2b62-0942-4cdc-e9b93252ce1c/source/512x512bb.jpg';
         this.classPath = 'ANIME.Zoro';
         /**
@@ -28,15 +24,18 @@ class Zoro extends models_1.AnimeParser {
                 results: [],
             };
             try {
-                const { data } = await axios_1.default.get(`${this.baseUrl}/search?keyword=${decodeURIComponent(query)}&page=${page}`);
+                const { data } = await this.client.get(`${this.baseUrl}/search?keyword=${decodeURIComponent(query)}&page=${page}`);
                 const $ = (0, cheerio_1.load)(data);
                 res.hasNextPage =
-                    $('.pagination > li').length > 0 ?
-                        $('.pagination li.active').length > 0 ?
-                            $('.pagination > li').last().hasClass('active') ? false : true
+                    $('.pagination > li').length > 0
+                        ? $('.pagination li.active').length > 0
+                            ? $('.pagination > li').last().hasClass('active')
+                                ? false
+                                : true
                             : false
                         : false;
-                res.totalPages = parseInt((_c = (_b = (_a = $('.pagination > .page-item a[title="Last"]')) === null || _a === void 0 ? void 0 : _a.attr('href')) === null || _b === void 0 ? void 0 : _b.split("=").pop()) !== null && _c !== void 0 ? _c : (_e = (_d = $('.pagination > .page-item.active a')) === null || _d === void 0 ? void 0 : _d.text()) === null || _e === void 0 ? void 0 : _e.trim()) || 0;
+                res.totalPages =
+                    parseInt((_c = (_b = (_a = $('.pagination > .page-item a[title="Last"]')) === null || _a === void 0 ? void 0 : _a.attr('href')) === null || _b === void 0 ? void 0 : _b.split('=').pop()) !== null && _c !== void 0 ? _c : (_e = (_d = $('.pagination > .page-item.active a')) === null || _d === void 0 ? void 0 : _d.text()) === null || _e === void 0 ? void 0 : _e.trim()) || 0;
                 if (res.totalPages === 0 && !res.hasNextPage)
                     res.totalPages = 1;
                 $('.film_list-wrap > div.flw-item').each((i, el) => {
@@ -76,7 +75,7 @@ class Zoro extends models_1.AnimeParser {
                 title: '',
             };
             try {
-                const { data } = await axios_1.default.get(`${this.baseUrl}/watch/${id}`);
+                const { data } = await this.client.get(`${this.baseUrl}/watch/${id}`);
                 const $ = (0, cheerio_1.load)(data);
                 const { mal_id, anilist_id } = JSON.parse($('#syncData').text());
                 info.malID = Number(mal_id);
@@ -87,19 +86,20 @@ class Zoro extends models_1.AnimeParser {
                 // Movie, TV, OVA, ONA, Special, Music
                 info.type = $('span.item').last().prev().prev().text().toUpperCase();
                 info.url = `${this.baseUrl}/${id}`;
-                const subDub = $('div.film-stats span.item div.tick-dub')
-                    .toArray()
-                    .map(value => $(value).text().toLowerCase());
-                if (subDub.length > 1) {
+                const hasSub = $('div.film-stats div.tick div.tick-item.tick-sub').length > 0;
+                const hasDub = $('div.film-stats div.tick div.tick-item.tick-dub').length > 0;
+                if (hasSub) {
+                    info.subOrDub = models_1.SubOrSub.SUB;
+                    info.hasSub = hasSub;
+                }
+                if (hasDub) {
+                    info.subOrDub = models_1.SubOrSub.DUB;
+                    info.hasDub = hasDub;
+                }
+                if (hasSub && hasDub) {
                     info.subOrDub = models_1.SubOrSub.BOTH;
                 }
-                else if (subDub.length > 0) {
-                    info.subOrDub = subDub[0];
-                }
-                else {
-                    info.subOrDub = models_1.SubOrSub.SUB;
-                }
-                const episodesAjax = await axios_1.default.get(`${this.baseUrl}/ajax/v2/episode/list/${id.split('-').pop()}`, {
+                const episodesAjax = await this.client.get(`${this.baseUrl}/ajax/v2/episode/list/${id.split('-').pop()}`, {
                     headers: {
                         'X-Requested-With': 'XMLHttpRequest',
                         Referer: `${this.baseUrl}/watch/${id}`,
@@ -141,20 +141,24 @@ class Zoro extends models_1.AnimeParser {
                 switch (server) {
                     case models_1.StreamingServers.VidStreaming:
                     case models_1.StreamingServers.VidCloud:
-                        return Object.assign({}, (await new utils_1.RapidCloud().extract(serverUrl)));
+                        return Object.assign({}, (await new utils_1.RapidCloud(this.proxyConfig, this.adapter).extract(serverUrl)));
                     case models_1.StreamingServers.StreamSB:
                         return {
-                            headers: { Referer: serverUrl.href, watchsb: 'streamsb', 'User-Agent': utils_2.USER_AGENT },
-                            sources: await new utils_1.StreamSB().extract(serverUrl, true),
+                            headers: {
+                                Referer: serverUrl.href,
+                                watchsb: 'streamsb',
+                                'User-Agent': utils_2.USER_AGENT,
+                            },
+                            sources: await new utils_1.StreamSB(this.proxyConfig, this.adapter).extract(serverUrl, true),
                         };
                     case models_1.StreamingServers.StreamTape:
                         return {
                             headers: { Referer: serverUrl.href, 'User-Agent': utils_2.USER_AGENT },
-                            sources: await new utils_1.StreamTape().extract(serverUrl),
+                            sources: await new utils_1.StreamTape(this.proxyConfig, this.adapter).extract(serverUrl),
                         };
                     default:
                     case models_1.StreamingServers.VidCloud:
-                        return Object.assign({ headers: { Referer: serverUrl.href } }, (await new utils_1.RapidCloud().extract(serverUrl)));
+                        return Object.assign({ headers: { Referer: serverUrl.href } }, (await new utils_1.RapidCloud(this.proxyConfig, this.adapter).extract(serverUrl)));
                 }
             }
             if (!episodeId.includes('$episode$'))
@@ -166,7 +170,7 @@ class Zoro extends models_1.AnimeParser {
                 .replace('$episode$', '?ep=')
                 .replace(/\$auto|\$sub|\$dub/gi, '')}`;
             try {
-                const { data } = await axios_1.default.get(`${this.baseUrl}/ajax/v2/episode/servers?episodeId=${episodeId.split('?ep=')[1]}`);
+                const { data } = await this.client.get(`${this.baseUrl}/ajax/v2/episode/servers?episodeId=${episodeId.split('?ep=')[1]}`);
                 const $ = (0, cheerio_1.load)(data.html);
                 /**
                  * vidtreaming -> 4
@@ -204,7 +208,7 @@ class Zoro extends models_1.AnimeParser {
                 catch (err) {
                     throw new Error("Couldn't find server. Try another server");
                 }
-                const { data: { link }, } = await axios_1.default.get(`${this.baseUrl}/ajax/v2/episode/sources?id=${serverId}`);
+                const { data: { link }, } = await this.client.get(`${this.baseUrl}/ajax/v2/episode/sources?id=${serverId}`);
                 return await this.fetchEpisodeSources(link, server);
             }
             catch (err) {
@@ -222,7 +226,7 @@ class Zoro extends models_1.AnimeParser {
          */
         this.fetchRecentEpisodes = async (page = 1) => {
             try {
-                const { data } = await axios_1.default.get(`${this.baseUrl}/recently-updated?page=${page}`);
+                const { data } = await this.client.get(`${this.baseUrl}/recently-updated?page=${page}`);
                 const $ = (0, cheerio_1.load)(data);
                 const hasNextPage = $('.pagination > li').length > 0
                     ? $('.pagination > li').last().hasClass('active')
@@ -257,13 +261,13 @@ class Zoro extends models_1.AnimeParser {
         this.fetchEpisodeServers = (episodeId) => {
             throw new Error('Method not implemented.');
         };
-        this.baseUrl = zoroBase ? zoroBase : this.baseUrl;
     }
 }
 // (async () => {
 //   const zoro = new Zoro();
 //   const anime = await zoro.search('classroom of the elite');
-//   const sources = await zoro.fetchEpisodeSources('bleach-the-movie-fade-to-black-1492$episode$58326');
+//   const info = await zoro.fetchAnimeInfo(anime.results[0].id);
+//   const sources = await zoro.fetchEpisodeSources(info.episodes![0].id);
 //   console.log(sources);
 // })();
 exports.default = Zoro;

@@ -1,4 +1,3 @@
-import axios from 'axios';
 import { load } from 'cheerio';
 
 import { MangaParser, ISearch, IMangaInfo, IMangaResult, MediaStatus, IMangaChapterPage } from '../../models';
@@ -15,7 +14,7 @@ class MangaHere extends MangaParser {
       title: '',
     };
     try {
-      const { data } = await axios.get(`${this.baseUrl}/manga/${mangaId}`, {
+      const { data } = await this.client.get(`${this.baseUrl}/manga/${mangaId}`, {
         headers: {
           cookie: 'isAdult=1',
         },
@@ -64,7 +63,7 @@ class MangaHere extends MangaParser {
     const url = `${this.baseUrl}/manga/${chapterId}/1.html`;
 
     try {
-      const { data } = await axios.get(url, {
+      const { data } = await this.client.get(url, {
         headers: {
           cookie: 'isAdult=1',
         },
@@ -90,7 +89,11 @@ class MangaHere extends MangaParser {
         const urls = ds.split("['")[1].split("']")[0].split("','");
 
         urls.map((url, i) =>
-          chapterPages.push({ page: i, img: `https:${url}`, headerForImage: { Referer: url } })
+          chapterPages.push({
+            page: i,
+            img: `https:${url}`,
+            headerForImage: { Referer: url },
+          })
         );
       } else {
         let sKey = this.extractKey(html);
@@ -108,7 +111,7 @@ class MangaHere extends MangaParser {
           const pageLink = `${pageBase}/chapterfun.ashx?cid=${chapterId}&page=${i}&key=${sKey}`;
 
           for (let j = 1; j <= 3; j++) {
-            const { data } = await axios.get(pageLink, {
+            const { data } = await this.client.get(pageLink, {
               headers: {
                 Referer: url,
                 'X-Requested-With': 'XMLHttpRequest',
@@ -151,7 +154,7 @@ class MangaHere extends MangaParser {
       results: [],
     };
     try {
-      const { data } = await axios.get(`${this.baseUrl}/search?title=${query}&page=${page}`);
+      const { data } = await this.client.get(`${this.baseUrl}/search?title=${query}&page=${page}`);
       const $ = load(data);
 
       searchRes.hasNextPage = $('div.pager-list-left > a.active').next().text() !== '>';

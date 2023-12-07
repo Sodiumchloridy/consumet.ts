@@ -23,7 +23,7 @@ test('returns episodes for sub and dub not available', async () => {
 
   const dubData = await anilist.fetchEpisodesListById('949', true);
   expect(dubData).not.toBeNull();
-  expect(dubData).toEqual([]);
+  expect(dubData).not.toEqual([]);
 });
 
 test('returns a filled array of servers', async () => {
@@ -47,7 +47,8 @@ test('returns a filled array of popular anime', async () => {
 });
 
 test('returns a filled array of airing schedule', async () => {
-  const data = await anilist.fetchAiringSchedule(1, 20, 1660047922, 1661832000, true);
+  const weekStart = Math.ceil(Date.now() / 1000);
+  const data = await anilist.fetchAiringSchedule(1, 20, weekStart, weekStart + 604800, true);
   expect(data.results).not.toEqual([]);
 });
 ('');

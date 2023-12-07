@@ -1,9 +1,5 @@
 "use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
 Object.defineProperty(exports, "__esModule", { value: true });
-const axios_1 = __importDefault(require("axios"));
 const cheerio_1 = require("cheerio");
 const models_1 = require("../../models");
 const extractors_1 = require("../../extractors");
@@ -22,7 +18,7 @@ class ViewAsian extends models_1.MovieParser {
                 results: [],
             };
             try {
-                const { data } = await axios_1.default.get(`${this.baseUrl}/movie/search/${query.replace(/[\W_]+/g, '-')}?page=${page}`);
+                const { data } = await this.client.get(`${this.baseUrl}/movie/search/${query.replace(/[\W_]+/g, '-')}?page=${page}`);
                 const $ = (0, cheerio_1.load)(data);
                 const navSelector = 'div#pagination > nav:nth-child(1) > ul:nth-child(1)';
                 searchResult.hasNextPage =
@@ -59,10 +55,11 @@ class ViewAsian extends models_1.MovieParser {
                 title: '',
             };
             try {
-                const { data } = await axios_1.default.get(mediaId);
+                const { data } = await this.client.get(mediaId);
                 const $ = (0, cheerio_1.load)(data);
                 mediaInfo.id = realMediaId;
                 mediaInfo.title = $('.detail-mod h3').text();
+                mediaInfo.banner = $('.detail-mod > dm-thumb > img').attr('src');
                 mediaInfo.otherNames = $('.other-name a')
                     .map((i, el) => $(el).attr('title').trim())
                     .get();
@@ -96,18 +93,18 @@ class ViewAsian extends models_1.MovieParser {
                 const serverUrl = new URL(episodeId);
                 switch (server) {
                     case models_1.StreamingServers.AsianLoad:
-                        return Object.assign({}, (await new extractors_1.AsianLoad().extract(serverUrl)));
+                        return Object.assign({}, (await new extractors_1.AsianLoad(this.proxyConfig, this.adapter).extract(serverUrl)));
                     case models_1.StreamingServers.MixDrop:
                         return {
-                            sources: await new extractors_1.MixDrop().extract(serverUrl),
+                            sources: await new extractors_1.MixDrop(this.proxyConfig, this.adapter).extract(serverUrl),
                         };
                     case models_1.StreamingServers.StreamTape:
                         return {
-                            sources: await new extractors_1.StreamTape().extract(serverUrl),
+                            sources: await new extractors_1.StreamTape(this.proxyConfig, this.adapter).extract(serverUrl),
                         };
                     case models_1.StreamingServers.StreamSB:
                         return {
-                            sources: await new extractors_1.StreamSB().extract(serverUrl),
+                            sources: await new extractors_1.StreamSB(this.proxyConfig, this.adapter).extract(serverUrl),
                         };
                     default:
                         throw new Error('Server not supported');
@@ -115,17 +112,19 @@ class ViewAsian extends models_1.MovieParser {
             }
             if (!episodeId.includes('$episode$'))
                 throw new Error('Invalid episode id');
-            episodeId = `${this.baseUrl}${episodeId.replace('$episode$', '?ep=')}`;
+            episodeId = `${episodeId.replace('$episode$', '?ep=')}`;
             // return episodeId;
             try {
-                const { data } = await axios_1.default.get(episodeId);
+                if (!episodeId.startsWith(this.baseUrl))
+                    episodeId = `${this.baseUrl}/${episodeId}`;
+                const { data } = await this.client.get(episodeId);
                 const $ = (0, cheerio_1.load)(data);
                 let serverUrl = '';
                 switch (server) {
                     // asianload is the same as the standard server
                     case models_1.StreamingServers.AsianLoad:
                         serverUrl = `https:${$('.anime:contains(Asianload)').attr('data-video')}`;
-                        if (!serverUrl.includes('asian'))
+                        if (!serverUrl.includes('draplay2'))
                             throw new Error('Try another server');
                         break;
                     case models_1.StreamingServers.MixDrop:

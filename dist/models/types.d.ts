@@ -19,12 +19,14 @@ export interface IAnimeResult {
     title: string | ITitle;
     url?: string;
     image?: string;
+    imageHash?: string;
     cover?: string;
+    coverHash?: string;
     status?: MediaStatus;
     rating?: number;
     type?: MediaFormat;
     releaseDate?: string;
-    [x: string]: unknown;
+    [x: string]: any;
 }
 export interface ISearch<T> {
     currentPage?: number;
@@ -40,6 +42,7 @@ export interface Trailer {
     id: string;
     site?: string;
     thumbnail?: string;
+    thumbnailHash?: string | null;
 }
 export interface FuzzyDate {
     year?: number;
@@ -97,6 +100,7 @@ export interface IAnimeEpisodeV2 {
         season_number: number;
         title: string;
         image: string;
+        imageHash: string;
         description: string;
         releaseDate: string;
         isHD: boolean;
@@ -114,6 +118,7 @@ export interface IAnimeEpisode {
     isFiller?: boolean;
     url?: string;
     image?: string;
+    imageHash?: string;
     releaseDate?: string;
     [x: string]: unknown;
 }
@@ -149,13 +154,18 @@ export declare enum StreamingServers {
     GogoCDN = "gogocdn",
     StreamSB = "streamsb",
     MixDrop = "mixdrop",
+    Mp4Upload = "mp4upload",
     UpCloud = "upcloud",
     VidCloud = "vidcloud",
     StreamTape = "streamtape",
     VizCloud = "vizcloud",
     MyCloud = "mycloud",
     Filemoon = "filemoon",
-    VidStreaming = "vidstreaming"
+    VidStreaming = "vidstreaming",
+    SmashyStream = "smashystream",
+    StreamHub = "streamhub",
+    StreamWish = "streamwish",
+    VidMoly = "vidmoly"
 }
 export declare enum MediaStatus {
     ONGOING = "Ongoing",
@@ -290,6 +300,7 @@ export interface ISource {
         [k: string]: string;
     };
     intro?: Intro;
+    outro?: Intro;
     subtitles?: ISubtitle[];
     sources: IVideo[];
     download?: string;
@@ -344,6 +355,8 @@ interface INews {
     uploadedAt: string;
     /** thumbnail image URL of the news */
     thumbnail: string;
+    /** thumbnail image blurhash code of the news */
+    thumbnailHash: string;
     /** URL of the news */
     url: string;
 }
@@ -378,7 +391,6 @@ export declare enum Genres {
     CARS = "Cars",
     COMEDY = "Comedy",
     DRAMA = "Drama",
-    ECCHI = "Ecchi",
     FANTASY = "Fantasy",
     HORROR = "Horror",
     MAHOU_SHOUJO = "Mahou Shoujo",
@@ -417,5 +429,9 @@ export interface ProxyConfig {
      * X-API-Key header value (if any)
      **/
     key?: string;
+    /**
+     * The proxy rotation interval in milliseconds. (default: 5000)
+     */
+    rotateInterval?: number;
 }
 export {};

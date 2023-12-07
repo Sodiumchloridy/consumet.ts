@@ -1,28 +1,24 @@
 "use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
 Object.defineProperty(exports, "__esModule", { value: true });
 const cheerio_1 = require("cheerio");
-const axios_1 = __importDefault(require("axios"));
 const models_1 = require("../../models");
 const extractors_1 = require("../../extractors");
-class Dramacool extends models_1.MovieParser {
+class DramaCool extends models_1.MovieParser {
     constructor() {
         super(...arguments);
-        this.name = 'Dramacool';
-        this.baseUrl = 'https://www1.dramacool.cr';
+        this.name = 'DramaCool';
+        this.baseUrl = 'https://dramacool.hr';
         this.logo = 'https://play-lh.googleusercontent.com/IaCb2JXII0OV611MQ-wSA8v_SAs9XF6E3TMDiuxGGXo4wp9bI60GtDASIqdERSTO5XU';
-        this.classPath = 'MOVIES.Dramacool';
+        this.classPath = 'MOVIES.DramaCool';
         this.supportedTypes = new Set([models_1.TvType.MOVIE, models_1.TvType.TVSERIES]);
         this.search = async (query, page = 1) => {
-            const searchResult = {
-                currentPage: page,
-                hasNextPage: false,
-                results: [],
-            };
             try {
-                const { data } = await axios_1.default.get(`${this.baseUrl}/search?keyword=${query.replace(/[\W_]+/g, '-')}&page=${page}`);
+                const searchResult = {
+                    currentPage: page,
+                    hasNextPage: false,
+                    results: [],
+                };
+                const { data } = await this.client.get(`${this.baseUrl}/search?keyword=${query.replace(/[\W_]+/g, '-')}&page=${page}`);
                 const $ = (0, cheerio_1.load)(data);
                 const navSelector = 'ul.pagination';
                 searchResult.hasNextPage =
@@ -43,15 +39,15 @@ class Dramacool extends models_1.MovieParser {
             }
         };
         this.fetchMediaInfo = async (mediaId) => {
-            const realMediaId = mediaId;
-            if (!mediaId.startsWith(this.baseUrl))
-                mediaId = `${this.baseUrl}/${mediaId}`;
-            const mediaInfo = {
-                id: '',
-                title: '',
-            };
             try {
-                const { data } = await axios_1.default.get(mediaId);
+                const realMediaId = mediaId;
+                if (!mediaId.startsWith(this.baseUrl))
+                    mediaId = `${this.baseUrl}/${mediaId}`;
+                const mediaInfo = {
+                    id: '',
+                    title: '',
+                };
+                const { data } = await this.client.get(mediaId);
                 const $ = (0, cheerio_1.load)(data);
                 mediaInfo.id = realMediaId;
                 mediaInfo.title = $('.info > h1:nth-child(1)').text();
@@ -69,6 +65,7 @@ class Dramacool extends models_1.MovieParser {
                         id: (_b = $(el).find('a').attr('href')) === null || _b === void 0 ? void 0 : _b.split('.html')[0].slice(1),
                         title: $(el).find('h3').text().replace(mediaInfo.title.toString(), '').trim(),
                         episode: parseFloat((_c = $(el).find('a').attr('href')) === null || _c === void 0 ? void 0 : _c.split('-episode-')[1].split('.html')[0].split('-').join('.')),
+                        subType: $(el).find('span.type').text(),
                         releaseDate: $(el).find('span.time').text(),
                         url: `${this.baseUrl}${$(el).find('a').attr('href')}`,
                     });
@@ -85,53 +82,33 @@ class Dramacool extends models_1.MovieParser {
                 const serverUrl = new URL(episodeId);
                 switch (server) {
                     case models_1.StreamingServers.AsianLoad:
-                        return Object.assign({}, (await new extractors_1.AsianLoad().extract(serverUrl)));
+                        return Object.assign({}, (await new extractors_1.AsianLoad(this.proxyConfig, this.adapter).extract(serverUrl)));
                     case models_1.StreamingServers.MixDrop:
                         return {
-                            sources: await new extractors_1.MixDrop().extract(serverUrl),
+                            sources: await new extractors_1.MixDrop(this.proxyConfig, this.adapter).extract(serverUrl),
                         };
                     case models_1.StreamingServers.StreamTape:
                         return {
-                            sources: await new extractors_1.StreamTape().extract(serverUrl),
+                            sources: await new extractors_1.StreamTape(this.proxyConfig, this.adapter).extract(serverUrl),
                         };
                     case models_1.StreamingServers.StreamSB:
                         return {
-                            sources: await new extractors_1.StreamSB().extract(serverUrl),
+                            sources: await new extractors_1.StreamSB(this.proxyConfig, this.adapter).extract(serverUrl),
                         };
                     default:
                         throw new Error('Server not supported');
                 }
             }
-            if (!episodeId.includes('.html'))
-                episodeId = `${this.baseUrl}/${episodeId}.html`;
             try {
-                const { data } = await axios_1.default.get(episodeId);
-                const $ = (0, cheerio_1.load)(data);
-                let serverUrl = '';
-                switch (server) {
-                    // asianload is the same as the standard server
-                    case models_1.StreamingServers.AsianLoad:
-                        serverUrl = `https:${$('.Standard').attr('data-video')}`;
-                        if (!serverUrl.includes('asian'))
-                            throw new Error('Try another server');
-                        break;
-                    case models_1.StreamingServers.MixDrop:
-                        serverUrl = $('.mixdrop').attr('data-video');
-                        if (!serverUrl.includes('mixdrop'))
-                            throw new Error('Try another server');
-                        break;
-                    case models_1.StreamingServers.StreamTape:
-                        serverUrl = $('.streamtape').attr('data-video');
-                        if (!serverUrl.includes('streamtape'))
-                            throw new Error('Try another server');
-                        break;
-                    case models_1.StreamingServers.StreamSB:
-                        serverUrl = $('.streamsb').attr('data-video');
-                        if (!serverUrl.includes('stream'))
-                            throw new Error('Try another server');
-                        break;
+                if (!episodeId.includes('.html'))
+                    episodeId = `${this.baseUrl}/${episodeId}.html`;
+                const servers = await this.fetchEpisodeServers(episodeId);
+                const i = servers.findIndex(s => s.name.toLowerCase() === server.toLowerCase());
+                if (i === -1) {
+                    throw new Error(`Server ${server} not found`);
                 }
-                return await this.fetchEpisodeSources(serverUrl, server);
+                const serverUrl = new URL(servers.filter(s => s.name.toLowerCase() === server.toLowerCase())[0].url);
+                return await this.fetchEpisodeSources(serverUrl.href, server);
             }
             catch (err) {
                 throw new Error(err.message);
@@ -142,16 +119,30 @@ class Dramacool extends models_1.MovieParser {
             return str.toLowerCase().replace(/\n/g, '').replace(`${contains}:`, '').trim();
         };
     }
-    fetchEpisodeServers(episodeId, ...args) {
-        throw new Error('Method not implemented.');
+    async fetchEpisodeServers(episodeId, ...args) {
+        try {
+            const episodeServers = [];
+            if (!episodeId.includes('.html'))
+                episodeId = `${this.baseUrl}/${episodeId}.html`;
+            const { data } = await this.client.get(episodeId);
+            const $ = (0, cheerio_1.load)(data);
+            $('div.anime_muti_link > ul > li').map(async (i, ele) => {
+                const url = $(ele).attr('data-video');
+                let name = $(ele).attr('class').replace('selected', '').trim();
+                if (name.includes('Standard')) {
+                    name = models_1.StreamingServers.AsianLoad;
+                }
+                episodeServers.push({
+                    name: name,
+                    url: url.startsWith('//') ? url === null || url === void 0 ? void 0 : url.replace('//', 'https://') : url,
+                });
+            });
+            return episodeServers;
+        }
+        catch (err) {
+            throw new Error(err.message);
+        }
     }
 }
-// (async () => {
-//   const drama = new Dramacool();
-//   const search = await drama.search('vincenzo');
-//   const mediaInfo = await drama.fetchMediaInfo(search.results[0].id);
-//   // const sources = await drama.fetchEpisodeSources(mediaInfo.episodes![0].id);
-//   console.log(mediaInfo);
-// })();
-exports.default = Dramacool;
+exports.default = DramaCool;
 //# sourceMappingURL=dramacool.js.map
