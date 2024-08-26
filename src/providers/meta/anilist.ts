@@ -19,6 +19,7 @@ import {
   ProxyConfig,
   MediaFormat,
   ITitle,
+  IStaff,
 } from '../../models';
 import {
   anilistSearchQuery,
@@ -31,6 +32,7 @@ import {
   anilistAdvancedQuery,
   anilistSiteStatisticsQuery,
   anilistCharacterQuery,
+  anilistStaffInfoQuery,
   range,
   getDays,
   days,
@@ -44,7 +46,7 @@ import Mangasee123 from '../manga/mangasee123';
 import Crunchyroll from '../anime/crunchyroll';
 import Bilibili from '../anime/bilibili';
 import NineAnime from '../anime/9anime';
-import { compareTwoStrings, getHashFromImage } from '../../utils/utils';
+import { ANIFY_URL, compareTwoStrings, getHashFromImage } from '../../utils/utils';
 
 class Anilist extends AnimeParser {
   override readonly name = 'Anilist';
@@ -53,9 +55,9 @@ class Anilist extends AnimeParser {
   protected override classPath = 'META.Anilist';
 
   private readonly anilistGraphqlUrl = 'https://graphql.anilist.co';
-  private readonly kitsuGraphqlUrl = 'https://kitsu.io/api/graphql';
+  private readonly kitsuGraphqlUrl = 'https://kitsu.app/api/graphql';
   private readonly malSyncUrl = 'https://api.malsync.moe';
-  private readonly anifyUrl = 'https://api.anify.tv';
+  private readonly anifyUrl = ANIFY_URL;
   provider: AnimeParser;
 
   /**
@@ -65,9 +67,14 @@ class Anilist extends AnimeParser {
    * @param proxyConfig proxy config (optional)
    * @param adapter axios adapter (optional)
    */
-  constructor(provider?: AnimeParser, public proxyConfig?: ProxyConfig, adapter?: AxiosAdapter, customBaseURL?:string) {
+  constructor(
+    provider?: AnimeParser,
+    public proxyConfig?: ProxyConfig,
+    adapter?: AxiosAdapter,
+    customBaseURL?: string
+  ) {
     super(proxyConfig, adapter);
-    this.provider = provider || new Gogoanime(customBaseURL , proxyConfig);
+    this.provider = provider || new Gogoanime(customBaseURL, proxyConfig);
   }
 
   /**
@@ -1815,12 +1822,52 @@ class Anilist extends AnimeParser {
   };
 
   /**
-   * TODO: finish this (got lazy)
+   * To get Staff details by anilistId
    * @param id staff id from anilist
    *
    */
   fetchStaffById = async (id: number) => {
-    throw new Error('Not implemented yet');
+    const staffInfo: IStaff = {
+      id: String(id),
+      name: { first: '', last: '', native: '', full: '' },
+    };
+
+    const options = {
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      query: anilistStaffInfoQuery(id),
+    };
+
+    try {
+      const { data } = await this.client.post(this.anilistGraphqlUrl, options).catch(err => {
+        throw new Error((err as Error).message);
+      });
+      const staff = data.data.Staff;
+
+      staffInfo.id = staff?.id;
+      staffInfo.name = staff?.name;
+      staffInfo.image = staff?.image;
+      staffInfo.description = staff?.description;
+      staffInfo.siteUrl = staff?.siteUrl;
+
+      staffInfo.roles = staff?.staffMedia.edges.map((media: any) => ({
+        id: media?.node?.id,
+        title: media?.node?.title,
+        type: media?.node?.type,
+        image: {
+          extraLarge: media?.node?.coverImage?.extraLarge,
+          large: media?.node?.coverImage?.large,
+          medium: media?.node?.coverImage?.medium,
+        },
+        color: media?.node?.coverImage?.color,
+      }));
+
+      return staffInfo;
+    } catch (err) {
+      throw new Error((err as Error).message);
+    }
   };
 
   /**
