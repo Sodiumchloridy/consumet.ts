@@ -11,6 +11,8 @@ import Marin from './marin';
 import AnimeSaturn from './animesaturn';
 import AnimeUnity from './animeunity';
 import MonosChinos from './monoschinos';
+import Anix from './anix';
+import AnimeKai from './animekai';
 
 export default {
   Gogoanime,
@@ -26,4 +28,6 @@ export default {
   AnimeSaturn,
   AnimeUnity,
   MonosChinos,
+  Anix,
+  AnimeKai,
 };
