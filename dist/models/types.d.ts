@@ -164,6 +164,7 @@ export interface IVideo {
     [x: string]: unknown;
 }
 export declare enum StreamingServers {
+    VideoStr = "videostr",
     AsianLoad = "asianload",
     GogoCDN = "gogocdn",
     StreamSB = "streamsb",
@@ -176,6 +177,8 @@ export declare enum StreamingServers {
     MyCloud = "mycloud",
     Filemoon = "filemoon",
     VidStreaming = "vidstreaming",
+    DuckStream = "duckstream",
+    BirdStream = "birdstream",
     BuiltIn = "builtin",
     SmashyStream = "smashystream",
     StreamHub = "streamhub",
@@ -183,7 +186,9 @@ export declare enum StreamingServers {
     VidHide = "vidhide",
     VidMoly = "vidmoly",
     Voe = "voe",
-    MegaUp = "megaup"
+    MegaUp = "megaup",
+    MegaCloud = "megacloud",
+    Luffy = "luffy"
 }
 export declare enum MediaStatus {
     ONGOING = "Ongoing",
@@ -472,6 +477,13 @@ export interface ProxyConfig {
      * The proxy rotation interval in milliseconds. (default: 5000)
      */
     rotateInterval?: number;
+    /**
+     * When true, the target URL is encoded with encodeURIComponent before
+     * being appended to the proxy URL. Required for CORS proxies that
+     * expect the target URL as a query parameter value.
+     * @example url: 'https://whatever.fly.dev/get?url=', encodeUrl: true
+     */
+    encodeUrl?: boolean;
 }
 export interface IRoles {
     id: string;

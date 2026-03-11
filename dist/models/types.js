@@ -19,6 +19,7 @@ var MediaFormat;
 })(MediaFormat || (exports.MediaFormat = MediaFormat = {}));
 var StreamingServers;
 (function (StreamingServers) {
+    StreamingServers["VideoStr"] = "videostr";
     StreamingServers["AsianLoad"] = "asianload";
     StreamingServers["GogoCDN"] = "gogocdn";
     StreamingServers["StreamSB"] = "streamsb";
@@ -28,10 +29,11 @@ var StreamingServers;
     StreamingServers["VidCloud"] = "vidcloud";
     StreamingServers["StreamTape"] = "streamtape";
     StreamingServers["VizCloud"] = "vizcloud";
-    // same as vizcloud
     StreamingServers["MyCloud"] = "mycloud";
     StreamingServers["Filemoon"] = "filemoon";
     StreamingServers["VidStreaming"] = "vidstreaming";
+    StreamingServers["DuckStream"] = "duckstream";
+    StreamingServers["BirdStream"] = "birdstream";
     StreamingServers["BuiltIn"] = "builtin";
     StreamingServers["SmashyStream"] = "smashystream";
     StreamingServers["StreamHub"] = "streamhub";
@@ -40,6 +42,8 @@ var StreamingServers;
     StreamingServers["VidMoly"] = "vidmoly";
     StreamingServers["Voe"] = "voe";
     StreamingServers["MegaUp"] = "megaup";
+    StreamingServers["MegaCloud"] = "megacloud";
+    StreamingServers["Luffy"] = "luffy";
 })(StreamingServers || (exports.StreamingServers = StreamingServers = {}));
 var MediaStatus;
 (function (MediaStatus) {

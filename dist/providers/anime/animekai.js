@@ -2,34 +2,80 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const cheerio_1 = require("cheerio");
 const models_1 = require("../../models");
-const utils_1 = require("../../utils");
-const { GenerateToken, DecodeIframeData } = new utils_1.MegaUp();
+const extractors_1 = require("../../extractors");
+const { GenerateToken, DecodeIframeData } = new extractors_1.MegaUp();
+/**
+ * Parses an AJAX response that may come as:
+ * 1. A parsed JSON object (axios auto-parsed)
+ * 2. A raw JSON string
+ * 3. An HTML-wrapped JSON string (e.g. <html>...<pre>{JSON}</pre>...</html>)
+ *
+ * @param data The raw response data from axios
+ * @returns The parsed JSON object, or undefined if parsing failed
+ */
+function parseAjaxResponse(data) {
+    if (typeof data === 'object')
+        return data;
+    if (typeof data === 'string') {
+        let jsonStr = data;
+        if (jsonStr.trimStart().startsWith('<')) {
+            const $ = (0, cheerio_1.load)(jsonStr);
+            jsonStr = $('pre').text();
+        }
+        try {
+            return JSON.parse(jsonStr);
+        }
+        catch (_a) {
+            return undefined;
+        }
+    }
+    return undefined;
+}
+/**
+ * Checks if the response HTML is a Cloudflare access denied / challenge page.
+ * Throws a descriptive error so callers know the issue is Cloudflare, not a bug.
+ */
+function assertNotCloudflareBlock(html, context) {
+    if (typeof html === 'string' &&
+        (html.includes('Access denied') || html.includes('Just a moment')) &&
+        html.includes('Cloudflare')) {
+        throw new Error(`[${context}] Cloudflare blocked the request. The response is a challenge/block page, not the actual site content.`);
+    }
+}
 class AnimeKai extends models_1.AnimeParser {
-    constructor(customBaseURL) {
+    constructor() {
         super(...arguments);
         this.name = 'AnimeKai';
-        this.baseUrl = 'https://animekai.to';
-        this.logo = 'https://animekai.to/assets/uploads/37585a39fe8c8d8fafaa2c7bfbf5374ecac859ea6a0288a6da2c61f5.png';
+        this.baseUrl = 'https://anikai.to';
+        this.logo = 'https://anikai.to/assets/uploads/37585a3ffa8ec292ee9e2255f3f63b48ceca17ef2a0386.png';
         this.classPath = 'ANIME.AnimeKai';
         /**
-         * @param id Anime id
+         * Fetch anime information
+         * @param id Anime ID/slug
+         * @returns Promise<IAnimeInfo>
          */
         this.fetchAnimeInfo = async (id) => {
             var _a;
+            // Strip episode params ($ep=...,$token=...) if present — only use the anime slug
+            const animeSlug = id.split('$')[0];
             const info = {
-                id: id,
+                id: animeSlug,
                 title: '',
             };
             try {
-                const { data } = await this.client.get(`${this.baseUrl}/watch/${id}`, { headers: this.Headers() });
-                const $ = (0, cheerio_1.load)(data);
+                const { data } = await this.client.get(`${this.baseUrl}/watch/${animeSlug}`, {
+                    headers: this.Headers(),
+                });
+                if (typeof data === 'string')
+                    assertNotCloudflareBlock(data, 'fetchAnimeInfo');
+                const $ = (0, cheerio_1.load)(typeof data === 'string' ? data : '');
                 info.title = $('.entity-scroll > .title').text();
                 info.japaneseTitle = (_a = $('.entity-scroll > .title').attr('data-jp')) === null || _a === void 0 ? void 0 : _a.trim();
                 info.image = $('div.poster > div >img').attr('src');
                 info.description = $('.entity-scroll > .desc').text().trim();
                 // Movie, TV, OVA, ONA, Special, Music
                 info.type = $('.entity-scroll > .info').children().last().text().toUpperCase();
-                info.url = `${this.baseUrl}/watch/${id}`;
+                info.url = `${this.baseUrl}/watch/${animeSlug}`;
                 info.recommendations = [];
                 $('section.sidebar-section:not(#related-anime) .aitem-col .aitem').each((i, ele) => {
                     var _a, _b, _c, _d, _e, _f, _g, _h, _j;
@@ -48,22 +94,42 @@ class AnimeKai extends models_1.AnimeParser {
                     });
                 });
                 info.relations = [];
-                $('section#related-anime .tab-body .aitem-col').each((i, ele) => {
-                    var _a, _b, _c, _d, _e, _f, _g, _h, _j;
-                    const card = $(ele);
-                    const aTag = card.find('a.aitem');
-                    const id = (_a = aTag.attr('href')) === null || _a === void 0 ? void 0 : _a.replace('/watch/', '');
-                    (_b = info.relations) === null || _b === void 0 ? void 0 : _b.push({
-                        id: id,
-                        title: aTag.find('.title').text().trim(),
+                $('section#related-anime .aitem-col a.aitem').each((_, el) => {
+                    var _a, _b, _c, _d, _e, _f;
+                    const aTag = $(el);
+                    const infoBox = aTag.find('.info');
+                    const id = (_b = (_a = aTag.attr('href')) === null || _a === void 0 ? void 0 : _a.replace('/watch/', '')) !== null && _b !== void 0 ? _b : '';
+                    const title = aTag.find('.title').text().trim();
+                    const japaneseTitle = (_c = aTag.find('.title').attr('data-jp')) === null || _c === void 0 ? void 0 : _c.trim();
+                    const sub = parseInt(infoBox.find('.sub').text()) || 0;
+                    const dub = parseInt(infoBox.find('.dub').text()) || 0;
+                    const bolds = infoBox.find('span > b');
+                    let episodes = 0;
+                    let type = '';
+                    let relationType = '';
+                    bolds.each((_, b) => {
+                        const text = $(b).text().trim();
+                        if ($(b).hasClass('text-muted')) {
+                            relationType = text;
+                        }
+                        else if (/^\d+$/.test(text)) {
+                            episodes = parseInt(text);
+                        }
+                        else {
+                            type = text; // TV, MOVIE, etc
+                        }
+                    });
+                    (_d = info.relations) === null || _d === void 0 ? void 0 : _d.push({
+                        id,
+                        title,
                         url: `${this.baseUrl}${aTag.attr('href')}`,
-                        image: (_d = (_c = aTag.attr('style')) === null || _c === void 0 ? void 0 : _c.match(/background-image:\s*url\('(.+?)'\)/)) === null || _d === void 0 ? void 0 : _d[1],
-                        japaneseTitle: (_e = aTag.find('.title').attr('data-jp')) === null || _e === void 0 ? void 0 : _e.trim(),
-                        type: card.find('.info').children().eq(-2).text().trim(),
-                        sub: parseInt((_f = card.find('.info span.sub')) === null || _f === void 0 ? void 0 : _f.text()) || 0,
-                        dub: parseInt((_g = card.find('.info span.dub')) === null || _g === void 0 ? void 0 : _g.text()) || 0,
-                        relationType: card.find('.info').children().last().text().trim(),
-                        episodes: parseInt((_h = card.find('.info').children().eq(-3).text().trim()) !== null && _h !== void 0 ? _h : (_j = card.find('.info span.sub')) === null || _j === void 0 ? void 0 : _j.text()) || 0,
+                        image: (_f = (_e = aTag.attr('style')) === null || _e === void 0 ? void 0 : _e.match(/background-image:\s*url\('(.+?)'\)/)) === null || _f === void 0 ? void 0 : _f[1],
+                        japaneseTitle,
+                        type: type.toUpperCase(),
+                        sub,
+                        dub,
+                        relationType,
+                        episodes,
                     });
                 });
                 const hasSub = $('.entity-scroll > .info > span.sub').length > 0;
@@ -81,12 +147,14 @@ class AnimeKai extends models_1.AnimeParser {
                 }
                 info.genres = [];
                 $('.entity-scroll > .detail')
-                    .find('div:contains("Genres")')
+                    .find('div')
                     .each(function () {
-                    var _a;
-                    const genre = $(this).text().trim();
-                    if (genre != undefined)
-                        (_a = info.genres) === null || _a === void 0 ? void 0 : _a.push(genre);
+                    const text = $(this).text().trim();
+                    if (text.startsWith('Genres:')) {
+                        const genresText = text.replace('Genres:', '').trim();
+                        const genres = genresText.split(',').map(g => g.trim());
+                        info.genres = genres;
+                    }
                 });
                 switch ($('.entity-scroll > .detail').find("div:contains('Status') > span").text().trim()) {
                     case 'Completed':
@@ -103,23 +171,42 @@ class AnimeKai extends models_1.AnimeParser {
                         break;
                 }
                 info.season = $('.entity-scroll > .detail').find("div:contains('Premiered') > span").text().trim();
+                info.duration = $('.entity-scroll > .detail').find("div:contains('Duration') > span").text().trim();
+                $('.entity-scroll > .detail div')
+                    .filter((_, el) => $(el).text().includes('Links:'))
+                    .find('a')
+                    .each((_, el) => {
+                    var _a, _b, _c, _d, _e;
+                    const href = (_a = $(el).attr('href')) !== null && _a !== void 0 ? _a : '';
+                    if (href.includes('myanimelist'))
+                        info.malId = (_c = (_b = href.match(/anime\/(\d+)/)) === null || _b === void 0 ? void 0 : _b[1]) !== null && _c !== void 0 ? _c : '';
+                    if (href.includes('anilist'))
+                        info.anilistId = (_e = (_d = href.match(/anime\/(\d+)/)) === null || _d === void 0 ? void 0 : _d[1]) !== null && _e !== void 0 ? _e : '';
+                });
                 const ani_id = $('.rate-box#anime-rating').attr('data-id');
-                const episodesAjax = await this.client.get(`${this.baseUrl}/ajax/episodes/list?ani_id=${ani_id}&_=${GenerateToken(ani_id)}`, {
+                const episodesAjax = await this.client.get(`${this.baseUrl}/ajax/episodes/list?ani_id=${ani_id}&_=${await GenerateToken(ani_id)}`, {
                     headers: {
-                        'X-Requested-With': 'XMLHttpRequest',
-                        Referer: `${this.baseUrl}/watch/${id}`,
                         ...this.Headers(),
+                        'X-Requested-With': 'XMLHttpRequest',
+                        Referer: `${this.baseUrl}/watch/${animeSlug}`,
                     },
                 });
-                const $$ = (0, cheerio_1.load)(episodesAjax.data.result);
+                const episodesParsed = parseAjaxResponse(episodesAjax.data);
+                const episodesResult = episodesParsed === null || episodesParsed === void 0 ? void 0 : episodesParsed.result;
+                if (!episodesResult || typeof episodesResult !== 'string') {
+                    info.totalEpisodes = 0;
+                    info.episodes = [];
+                    return info;
+                }
+                const $$ = (0, cheerio_1.load)(episodesResult);
                 info.totalEpisodes = $$('div.eplist > ul > li').length;
                 info.episodes = [];
                 $$('div.eplist > ul > li > a').each((i, el) => {
                     var _a;
-                    const episodeId = `${info.id}$ep=${$$(el).attr('num')}$token=${$$(el).attr('token')}`; //appending token to episode id, as it is required to fetch servers keeping the structure same as other providers
+                    const episodeId = `${animeSlug}$ep=${$$(el).attr('num')}$token=${$$(el).attr('token')}`; //appending token to episode id, as it is required to fetch servers keeping the structure same as other providers
                     const number = parseInt($$(el).attr('num'));
                     const title = $$(el).children('span').text().trim();
-                    const url = `${this.baseUrl}/watch/${info.id}${$$(el).attr('href')}ep=${$$(el).attr('num')}`;
+                    const url = `${this.baseUrl}/watch/${animeSlug}${$$(el).attr('href')}ep=${$$(el).attr('num')}`;
                     const isFiller = $$(el).hasClass('filler');
                     const isSubbed = number <= (parseInt($('.entity-scroll > .info > span.sub').text().trim()) || 0);
                     const isDubbed = number <= (parseInt($('.entity-scroll > .info > span.dub').text().trim()) || 0);
@@ -140,10 +227,11 @@ class AnimeKai extends models_1.AnimeParser {
             }
         };
         /**
-         *
-         * @param episodeId Episode id
-         * @param server server type (default `VidCloud`) (optional)
-         * @param subOrDub sub or dub (default `SubOrSub.SUB`) (optional)
+         * Fetch episode video sources
+         * @param episodeId Episode ID
+         * @param server Server type (default: VidCloud)
+         * @param subOrDub Sub or dub preference (default: SUB)
+         * @returns Promise<ISource>
          */
         this.fetchEpisodeSources = async (episodeId, server = models_1.StreamingServers.MegaUp, subOrDub = models_1.SubOrSub.SUB) => {
             var _a, _b;
@@ -153,13 +241,13 @@ class AnimeKai extends models_1.AnimeParser {
                     case models_1.StreamingServers.MegaUp:
                         return {
                             headers: { Referer: serverUrl.href },
-                            ...(await new utils_1.MegaUp(this.proxyConfig, this.adapter).extract(serverUrl)),
+                            ...(await new extractors_1.MegaUp(this.proxyConfig, this.adapter).extract(serverUrl)),
                             download: serverUrl.href.replace(/\/e\//, '/download/'),
                         };
                     default:
                         return {
                             headers: { Referer: serverUrl.href },
-                            ...(await new utils_1.MegaUp(this.proxyConfig, this.adapter).extract(serverUrl)),
+                            ...(await new extractors_1.MegaUp(this.proxyConfig, this.adapter).extract(serverUrl)),
                             download: serverUrl.href.replace(/\/e\//, '/download/'),
                         };
                 }
@@ -195,7 +283,9 @@ class AnimeKai extends models_1.AnimeParser {
                 const { data } = await this.client.get(url, {
                     headers: this.Headers(),
                 });
-                const $ = (0, cheerio_1.load)(data);
+                if (typeof data === 'string')
+                    assertNotCloudflareBlock(data, 'scrapeCardPage');
+                const $ = (0, cheerio_1.load)(typeof data === 'string' ? data : '');
                 const pagination = $('ul.pagination');
                 res.currentPage = parseInt(pagination.find('.page-item.active span.page-link').text().trim()) || 0;
                 const nextPage = (_a = pagination
@@ -258,31 +348,42 @@ class AnimeKai extends models_1.AnimeParser {
             }
         };
         /**
-         * @param episodeId Episode id
-         * @param subOrDub sub or dub (default `sub`) (optional)
+         * Fetch available episode servers
+         * @param episodeId Episode ID
+         * @param subOrDub Sub or dub preference (default: SUB)
+         * @returns Promise<IEpisodeServer[]>
          */
         this.fetchEpisodeServers = async (episodeId, subOrDub = models_1.SubOrSub.SUB) => {
-            if (!episodeId.startsWith(this.baseUrl + '/ajax'))
-                episodeId = `${this.baseUrl}/ajax/links/list?token=${episodeId.split('$token=')[1]}&_=${GenerateToken(episodeId.split('$token=')[1])}`;
+            if (!episodeId.startsWith(this.baseUrl + '/ajax')) {
+                const token = episodeId.split('$token=')[1];
+                episodeId = `${this.baseUrl}/ajax/links/list?token=${token}&_=${await GenerateToken(token)}`;
+            }
             try {
                 const { data } = await this.client.get(episodeId, { headers: this.Headers() });
-                const $ = (0, cheerio_1.load)(data.result);
+                const parsed = parseAjaxResponse(data);
+                const resultHtml = parsed === null || parsed === void 0 ? void 0 : parsed.result;
+                if (!resultHtml || typeof resultHtml !== 'string') {
+                    return [];
+                }
+                const $ = (0, cheerio_1.load)(resultHtml);
                 const servers = [];
-                const serverItems = $(`.server-items.lang-group[data-id="${subOrDub}"] .server`);
+                const subOrDubStr = subOrDub === models_1.SubOrSub.SUB ? 'softsub' : 'dub';
+                const serverItems = $(`.server-items.lang-group[data-id="${subOrDubStr}"] .server`);
                 await Promise.all(serverItems.map(async (i, server) => {
                     const id = $(server).attr('data-lid');
-                    const { data } = await this.client.get(`${this.baseUrl}/ajax/links/view?id=${id}&_=${GenerateToken(id)}`, { headers: this.Headers() });
-                    const decodedData = JSON.parse(DecodeIframeData(data.result));
+                    const linkResp = await this.client.get(`${this.baseUrl}/ajax/links/view?id=${id}&_=${await GenerateToken(id)}`, { headers: this.Headers() });
+                    const linkParsed = parseAjaxResponse(linkResp.data);
+                    const decodedIframeData = await DecodeIframeData(linkParsed === null || linkParsed === void 0 ? void 0 : linkParsed.result);
                     servers.push({
                         name: `MegaUp ${$(server).text().trim()}`.toLowerCase(), //megaup is the only server for now
-                        url: decodedData.url,
+                        url: decodedIframeData.url,
                         intro: {
-                            start: decodedData === null || decodedData === void 0 ? void 0 : decodedData.skip.intro[0],
-                            end: decodedData === null || decodedData === void 0 ? void 0 : decodedData.skip.intro[1],
+                            start: decodedIframeData === null || decodedIframeData === void 0 ? void 0 : decodedIframeData.skip.intro[0],
+                            end: decodedIframeData === null || decodedIframeData === void 0 ? void 0 : decodedIframeData.skip.intro[1],
                         },
                         outro: {
-                            start: decodedData === null || decodedData === void 0 ? void 0 : decodedData.skip.outro[0],
-                            end: decodedData === null || decodedData === void 0 ? void 0 : decodedData.skip.outro[1],
+                            start: decodedIframeData === null || decodedIframeData === void 0 ? void 0 : decodedIframeData.skip.outro[0],
+                            end: decodedIframeData === null || decodedIframeData === void 0 ? void 0 : decodedIframeData.skip.outro[1],
                         },
                     });
                 }));
@@ -292,21 +393,12 @@ class AnimeKai extends models_1.AnimeParser {
                 throw new Error(err.message);
             }
         };
-        if (customBaseURL) {
-            if (customBaseURL.startsWith('http://') || customBaseURL.startsWith('https://')) {
-                this.baseUrl = customBaseURL;
-            }
-            else {
-                this.baseUrl = `http://${customBaseURL}`;
-            }
-        }
-        else {
-            this.baseUrl = this.baseUrl;
-        }
     }
     /**
-     * @param query Search query
-     * @param page Page number (optional)
+     * Search for anime
+     * @param query Search query string
+     * @param page Page number (default: 1)
+     * @returns Promise<ISearch<IAnimeResult>>
      */
     search(query, page = 1) {
         if (0 >= page) {
@@ -399,7 +491,9 @@ class AnimeKai extends models_1.AnimeParser {
         try {
             const res = [];
             const { data } = await this.client.get(`${this.baseUrl}/home`, { headers: this.Headers() });
-            const $ = (0, cheerio_1.load)(data);
+            if (typeof data === 'string')
+                assertNotCloudflareBlock(data, 'fetchGenres');
+            const $ = (0, cheerio_1.load)(typeof data === 'string' ? data : '');
             const sideBar = $('#menu');
             sideBar.find('ul.c4 li a').each((i, ele) => {
                 const genres = $(ele);
@@ -434,8 +528,13 @@ class AnimeKai extends models_1.AnimeParser {
                 results: [],
             };
             const { data } = await this.client.get(`${this.baseUrl}/ajax/schedule/items?tz=5.5&time=${Math.floor(new Date(`${date}T00:00:00Z`).getTime() / 1000)}`, { headers: this.Headers() });
-            const $ = (0, cheerio_1.load)(data.result);
-            $('ul.collapsed li').each((i, ele) => {
+            const parsed = parseAjaxResponse(data);
+            let htmlContent = (parsed === null || parsed === void 0 ? void 0 : parsed.result) || data;
+            if (typeof htmlContent === 'object' && htmlContent.html) {
+                htmlContent = htmlContent.html;
+            }
+            const $ = (0, cheerio_1.load)(typeof htmlContent === 'string' ? htmlContent : '');
+            $('ul li').each((i, ele) => {
                 var _a;
                 const card = $(ele);
                 const titleElement = card.find('span.title');
@@ -458,7 +557,9 @@ class AnimeKai extends models_1.AnimeParser {
         try {
             const res = { results: [] };
             const { data } = await this.client.get(`${this.baseUrl}/home`, { headers: this.Headers() });
-            const $ = (0, cheerio_1.load)(data);
+            if (typeof data === 'string')
+                assertNotCloudflareBlock(data, 'fetchSpotlight');
+            const $ = (0, cheerio_1.load)(typeof data === 'string' ? data : '');
             $('div.swiper-wrapper > div.swiper-slide').each((i, el) => {
                 var _a, _b;
                 const card = $(el);
@@ -498,9 +599,11 @@ class AnimeKai extends models_1.AnimeParser {
         }
     }
     async fetchSearchSuggestions(query) {
+        var _a, _b;
         try {
             const { data } = await this.client.get(`${this.baseUrl}/ajax/anime/search?keyword=${query.replace(/[\W_]+/g, '+')}`, { headers: this.Headers() });
-            const $ = (0, cheerio_1.load)(data.result.html);
+            const parsed = parseAjaxResponse(data);
+            const $ = (0, cheerio_1.load)((_b = (_a = parsed === null || parsed === void 0 ? void 0 : parsed.result) === null || _a === void 0 ? void 0 : _a.html) !== null && _b !== void 0 ? _b : '');
             const res = {
                 results: [],
             };
@@ -538,7 +641,8 @@ class AnimeKai extends models_1.AnimeParser {
     }
     Headers() {
         return {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:134.0) Gecko/20100101 Firefox/134.0',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36',
+            Connection: 'keep-alive',
             Accept: 'text/html, */*; q=0.01',
             'Accept-Language': 'en-US,en;q=0.5',
             'Sec-GPC': '1',
@@ -549,17 +653,9 @@ class AnimeKai extends models_1.AnimeParser {
             Pragma: 'no-cache',
             'Cache-Control': 'no-cache',
             Referer: `${this.baseUrl}/`,
-            Cookie: 'usertype=guest; session=hxYne0BNXguMc8zK1FHqQKXPmmoANzBBOuNPM64a; cf_clearance=WfGWV1bKGAaNySbh.yzCyuobBOtjg0ncfPwMhtsvsrs-1737611098-1.2.1.1-zWHcaytuokjFTKbCAxnSPDc_BWAeubpf9TAAVfuJ2vZuyYXByqZBXAZDl_VILwkO5NOLck8N0C4uQr4yGLbXRcZ_7jfWUvfPGayTADQLuh.SH.7bvhC7DmxrMGZ8SW.hGKEQzRJf8N7h6ZZ27GMyqOfz1zfrOiu9W30DhEtW2N7FAXUPrdolyKjCsP1AK3DqsDtYOiiPNLnu47l.zxK80XogfBRQkiGecCBaeDOJHenjn._Zgykkr.F_2bj2C3AS3A5mCpZSlWK5lqhV6jQSQLF9wKWitHye39V.6NoE3RE',
+            Cookie: '__p_mov=1; usertype=guest; session=vLrU4aKItp0QltI2asH83yugyWDsSSQtyl9sxWKO',
         };
     }
 }
-//(async () => {
-//  const animekai = new AnimeKai();
-//  const anime = await animekai.search('dandadan');
-//  const info = await animekai.fetchAnimeInfo('solo-leveling-season-2-arise-from-the-shadow-x7rq');
-//  console.log(info.episodes);
-//  const sources = await animekai.fetchEpisodeSources(info?.episodes![0].id!);
-//  console.log(sources);
-//})();
 exports.default = AnimeKai;
 //# sourceMappingURL=animekai.js.map

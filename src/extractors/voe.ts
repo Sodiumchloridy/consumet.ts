@@ -1,69 +1,58 @@
-import { load } from 'cheerio';
+import { VideoExtractor, IVideo, ISubtitle } from '../models';
 
-import { IVideo, VideoExtractor, ISubtitle } from '../models';
+interface IVoeOutput {
+  sources: {
+    url: string;
+    quality: string;
+  }[];
+  tracks: {
+    file: string;
+    label?: string;
+    kind?: string;
+  }[];
+  audio: any[];
+  intro: { start: number; end: number };
+  outro: { start: number; end: number };
+  headers: {
+    Referer: string;
+    'User-Agent': string;
+  };
+}
 
 class Voe extends VideoExtractor {
-  protected override serverName = 'voe';
+  protected override serverName = 'VideoStr';
   protected override sources: IVideo[] = [];
 
-  private readonly domains = ['voe.sx'];
-
-  override extract = async (videoUrl: URL): Promise<{ sources: IVideo[] } & { subtitles: ISubtitle[] }> => {
+  override extract = async (videoUrl: URL): Promise<{ sources: IVideo[]; subtitles: ISubtitle[] }> => {
     try {
-      const res = await this.client.get(videoUrl.href);
-      const $ = load(res.data);
-      const scriptContent = $('script').html();
-      const pageUrl = scriptContent
-        ? scriptContent.match(/window\.location\.href\s*=\s*'(https:\/\/[^']+)';/)?.[1] ?? ''
-        : '';
+      const apiUrl = 'https://crawlr.cc/3F7A1C9D8?url=' + encodeURIComponent(videoUrl.href);
 
-      const { data } = await this.client.get(pageUrl);
-      const $$ = load(data);
-      const bodyHtml = $$('body').html() || '';
-      const url = bodyHtml.match(/'hls'\s*:\s*'([^']+)'/s)?.[1] || '';
+      const { data } = await this.client.get<IVoeOutput>(apiUrl);
 
-      const subtitleRegex =
-        /<track\s+kind="subtitles"\s+label="([^"]+)"\s+srclang="([^"]+)"\s+src="([^"]+)"/g;
-      let subtitles: ISubtitle[] = [];
-      let match;
-      while ((match = subtitleRegex.exec(bodyHtml)) !== null) {
-        subtitles.push({
-          lang: match[1],
-          url: new URL(match[3], videoUrl.origin).href,
+      if (!data.sources || data.sources.length === 0) {
+        throw new Error('No sources returned');
+      }
+
+      for (const src of data.sources) {
+        this.sources.push({
+          url: src.url,
+          quality: src.quality ?? 'auto',
+          isM3U8: src.url.includes('.m3u8'),
         });
       }
 
-      let thumbnailSrc: string = '';
-      $$('script').each((i, el) => {
-        const scriptContent = $(el).html();
-        const regex = /previewThumbnails:\s*{[^}]*src:\s*\["([^"]+)"\]/;
-        if (scriptContent) {
-          const match = scriptContent.match(regex);
-          if (match && match[1]) {
-            thumbnailSrc = match[1];
-            return false;
-          }
-        }
-      });
-      if (thumbnailSrc) {
-        subtitles.push({
-          lang: 'thumbnails',
-          url: `${videoUrl.origin}${thumbnailSrc}`,
-        });
-      }
-
-      this.sources.push({
-        url: atob(url),
-        quality: 'default',
-        isM3U8: atob(url).includes('.m3u8'),
-      });
+      const subtitles: ISubtitle[] =
+        data.tracks?.map(t => ({
+          lang: t.label ?? 'Unknown',
+          url: t.file,
+          kind: t.kind ?? 'captions',
+        })) ?? [];
 
       return {
         sources: this.sources,
-        subtitles: subtitles,
+        subtitles,
       };
     } catch (err) {
-      console.log(err);
       throw new Error((err as Error).message);
     }
   };
