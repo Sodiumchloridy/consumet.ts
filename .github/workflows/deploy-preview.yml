@@ -10,7 +10,12 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Skip deployment when secrets are missing
+        if: ${{ !secrets.PI_HOST || !secrets.PI_USER || !secrets.PI_SSH_KEY }}
+        run: echo "Skipping preview deployment because required PI_* secrets are not configured."
+
       - name: Deploy Preview API to Raspberry Pi
+        if: ${{ secrets.PI_HOST && secrets.PI_USER && secrets.PI_SSH_KEY }}
         uses: appleboy/ssh-action@v1.2.3
         with:
           host: ${{ secrets.PI_HOST }}
